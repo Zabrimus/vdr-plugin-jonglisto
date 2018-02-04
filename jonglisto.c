@@ -16,12 +16,15 @@
 
 #include "services/scraper2vdr.h"
 
-static const char *VERSION = "0.0.1";
+static const char *VERSION = "0.0.2";
 static const char *DESCRIPTION = "Tool plugin for jonglisto-ng";
 static const char *MAINMENUENTRY = NULL;
 
 class cPluginJonglisto: public cPlugin {
 private:
+    std::stringstream printSeries(cSeries series);
+    std::stringstream printMovie(cMovie movie);
+    cString searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *Data = NULL);
 
 public:
     cPluginJonglisto(void);
@@ -126,19 +129,22 @@ bool cPluginJonglisto::Service(const char *Id, void *Data) {
 }
 
 const char **cPluginJonglisto::SVDRPHelpPages(void) {
-    static const char *HelpPages[] = { "EINF <channel id> <event id>\n"
+    static const char *HelpPages[] = {
+            "EINF <channel id> <event id>\n"
             "    Return the scraper information with id.",
+            "RINF <id>\n"
+            "    Return the scraper information for one recording with id <id>.",
             0 };
 
     return HelpPages;
 }
 
+
 cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, int &ReplyCode) {
     char *rest = const_cast<char*>(Option);
     char *channelId;
     char *eventId;
-
-    cPlugin *p;
+    char *recId;
 
     if (strcasecmp(Command, "EINF") == 0) {
         if (rest && *rest) {
@@ -150,6 +156,12 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
                     // find the desired channel
                     tChannelID chid = tChannelID::FromString(channelId);
                     const cChannel *channel = Channels->GetByChannelID(chid);
+
+                    if (channel == NULL) {
+                        // unknown channel
+                        ReplyCode = 950;
+                        return cString::sprintf("channel not found: %s", channelId);
+                    }
 
                     // get desired schedule
                     const cSchedule *schedule = Schedules->GetSchedule(channel, false);
@@ -164,113 +176,7 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
                     ScraperGetEventType eventType;
                     eventType.event = event;
 
-                    p = cPluginManager::CallFirstService("GetEventType", (void*)&eventType);
-                    if (p) {
-                        if (eventType.type == tvType::tSeries) {
-                            // get series information
-                            cSeries series;
-                            series.seriesId = eventType.seriesId;
-                            series.episodeId = eventType.episodeId;
-
-                            p = cPluginManager::CallFirstService("GetSeries", (void*)&series);
-                            if (p) {
-                                std::stringstream seriesOut;
-
-                                seriesOut << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>"
-                                          << "<scraper><series>"
-                                          << "<id>" << eventType.seriesId << "</id>"
-                                          << "<name><![CDATA[" << series.name << "]]></name>"
-                                          << "<overview><![CDATA[" << series.overview << "]]></overview>"
-                                          << "<firstAired><![CDATA[" << series.firstAired << "]]></firstAired>"
-                                          << "<network><![CDATA[" << series.network << "]]></network>"
-                                          << "<status><![CDATA[" << series.status << "]]></status>"
-                                          << "<rating><![CDATA[" << series.rating << "]]></rating>";
-
-                                // create posters
-                                for (auto it = series.posters.begin(); it != series.posters.end(); ++it) {
-                                    seriesOut << "<poster height=\"" << it->height << "\" width=\"" << it->width << "\"><![CDATA[" << it->path << "]]></poster>";
-                                }
-
-                                // create banners
-                                for (auto it = series.banners.begin(); it != series.banners.end(); ++it) {
-                                    seriesOut << "<banner height=\"" << it->height << "\" width=\"" << it->width << "\"><![CDATA[" << it->path << "]]></banner>";
-                                }
-
-                                // create fanarts
-                                for (auto it = series.fanarts.begin(); it != series.fanarts.end(); ++it) {
-                                    seriesOut << "<fanart height=\"" << it->height << "\" width=\"" << it->width << "\"><![CDATA[" << it->path << "]]></fanart>";
-                                }
-
-                                // create season poster
-                                seriesOut << "<seasonPoster height=\"" << series.seasonPoster.height << "\" width=\"" << series.seasonPoster.width << "\"><![CDATA[" << series.seasonPoster.path << "]]></seasonPoster>";
-
-                                // create actors
-                                for (auto it = series.actors.begin(); it != series.actors.end(); ++it) {
-                                    seriesOut << "<actor height=\"" << it->actorThumb.height << "\" width=\"" << it->actorThumb.width << "\"><path><![CDATA[" << it->actorThumb.path << "]]></path><name><![CDATA[" << it->name << "]]></name><role><![CDATA[" << it->role << "]]></role></actor>";
-                                }
-
-                                // create episode
-                                seriesOut << "<episode height=\"" << series.episode.episodeImage.height << "\" width=\"" << series.episode.episodeImage.width << "\"><![CDATA[" << series.episode.episodeImage.path << "]]></episode>";
-
-                                seriesOut << "</series></scraper>";
-
-                                return seriesOut.str().c_str();
-                            } else {
-                                ReplyCode = 951;
-                                return "event not found";
-                            }
-                        } else if (eventType.type == tvType::tMovie) {
-                            cMovie movie;
-                            movie.movieId = eventType.movieId;
-
-                            p = cPluginManager::CallFirstService("GetMovie", (void*)&movie);
-                            if (p) {
-                                std::stringstream movieOut;
-                                movieOut << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>"
-                                         << "<scraper><movie>"
-                                         << "<id>" << movie.movieId << "</id>"
-                                         << "<adult><![CDATA[" << movie.adult << "]]></adult>"
-                                         << "<budget><![CDATA[" << movie.budget << "]]></budget>"
-                                         << "<genre><![CDATA[" << movie.genres << "]]></genre>"
-                                         << "<homepage><![CDATA[" << movie.homepage << "]]></homepage>"
-                                         << "<originalTitle><![CDATA[" << movie.originalTitle << "]]></originalTitle>"
-                                         << "<overview><![CDATA[" << movie.overview << "]]></overview>"
-                                         << "<popularity><![CDATA[" << movie.popularity << "]]></popularity>"
-                                         << "<releaseDate><![CDATA[" << movie.releaseDate << "]]></releaseDate>"
-                                         << "<revenue><![CDATA[" << movie.revenue << "]]></revenue>"
-                                         << "<runtime><![CDATA[" << movie.runtime << "]]></runtime>"
-                                         << "<tagline><![CDATA[" << movie.tagline << "]]></tagline>"
-                                         << "<title><![CDATA[" << movie.title << "]]></title>"
-                                         << "<voteAverage><![CDATA[" << movie.voteAverage << "]]></voteAverage>";
-
-                                // create actors
-                                for (auto it = movie.actors.begin(); it != movie.actors.end(); ++it) {
-                                    movieOut << "<actor height=\"" << it->actorThumb.height << "\" width=\"" << it->actorThumb.width << "\"><path><![CDATA[" << it->actorThumb.path << "]]></path><name><![CDATA[" << it->name << "]]></name><role><![CDATA[" << it->role << "]]></role></actor>";
-                                }
-
-                                // create fanArts
-                                movieOut << "<fanart height=\"" << movie.collectionFanart.height << "\" width=\"" << movie.collectionFanart.width << "\"><![CDATA[" << movie.collectionFanart.path << "]]></fanart>";
-                                movieOut << "<fanart height=\"" << movie.fanart.height << "\" width=\"" << movie.fanart.width << "\"><![CDATA[" << movie.fanart.path << "]]></fanart>";
-
-                                // create poster
-                                movieOut << "<poster height=\"" << movie.collectionPoster.height << "\" width=\"" << movie.collectionPoster.width << "\"><![CDATA[" << movie.collectionPoster.path << "]]></poster>";
-                                movieOut << "<poster height=\"" << movie.poster.height << "\" width=\"" << movie.poster.width << "\"><![CDATA[" << movie.poster.path << "]]></poster>";
-
-                                movieOut << "</movie></scraper>";
-
-                                return movieOut.str().c_str();
-                            } else {
-                                ReplyCode = 951;
-                                return "event not found";
-                            }
-                        } else {
-                            ReplyCode = 951;
-                            return "event not found";
-                        }
-                    } else {
-                        ReplyCode = 951;
-                        return "service not found";
-                    }
+                    return searchAndPrintEvent(ReplyCode, &eventType);
                 } else {
                     ReplyCode = 950;
                     return "parameter <event id> is missing";
@@ -283,9 +189,152 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             ReplyCode = 950;
             return "no parameter found";
         }
+    } else if (strcasecmp(Command, "RINF") == 0) {
+        if (rest && *rest) {
+            if ((recId = strtok_r(rest, " ", &rest)) != NULL) {
+
+                LOCK_RECORDINGS_READ
+                const cRecording *rec = Recordings->Get(atoi(recId) - 1);
+
+                // get event type
+                ScraperGetEventType eventType;
+                eventType.recording = rec;
+
+                return searchAndPrintEvent(ReplyCode, &eventType);
+            } else {
+                ReplyCode = 950;
+                return "parameter <recstart> is missing";
+            }
+        } else {
+            ReplyCode = 950;
+            return "no parameter found";
+        }
     }
 
     return NULL;
 }
+
+
+cString cPluginJonglisto::searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *eventType) {
+    cPlugin *p = cPluginManager::CallFirstService("GetEventType", eventType);
+    if (p) {
+        if (eventType->type == tvType::tSeries) {
+            // get series information
+            cSeries series;
+            series.seriesId = eventType->seriesId;
+            series.episodeId = eventType->episodeId;
+
+            p = cPluginManager::CallFirstService("GetSeries", (void*)&series);
+            if (p) {
+                std::stringstream seriesOut = printSeries(series);
+                return seriesOut.str().c_str();
+            } else {
+                ReplyCode = 951;
+                return "event not found";
+            }
+        } else if (eventType->type == tvType::tMovie) {
+            cMovie movie;
+            movie.movieId = eventType->movieId;
+
+            p = cPluginManager::CallFirstService("GetMovie", (void*)&movie);
+            if (p) {
+                std::stringstream movieOut = printMovie(movie);
+                return movieOut.str().c_str();
+            } else {
+                ReplyCode = 951;
+                return "event not found";
+            }
+        } else {
+            ReplyCode = 951;
+            return "event not found";
+        }
+    } else {
+        ReplyCode = 951;
+        return "service not found";
+    }
+}
+
+std::stringstream cPluginJonglisto::printSeries(cSeries series) {
+    std::stringstream seriesOut;
+    seriesOut << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>"
+            << "<scraper><series>" << "<id>" << series.seriesId << "</id>"
+            << "<name><![CDATA[" << series.name << "]]></name>"
+            << "<overview><![CDATA[" << series.overview << "]]></overview>"
+            << "<firstAired><![CDATA[" << series.firstAired << "]]></firstAired>"
+            << "<network><![CDATA[" << series.network << "]]></network>"
+            << "<status><![CDATA[" << series.status << "]]></status>"
+            << "<rating><![CDATA[" << series.rating << "]]></rating>";
+
+    // create posters
+    for (auto it = series.posters.begin(); it != series.posters.end(); ++it) {
+        seriesOut << "<poster height=\"" << it->height << "\" width=\"" << it->width << "\"><![CDATA[" << it->path << "]]></poster>";
+    }
+
+    // create banners
+    for (auto it = series.banners.begin(); it != series.banners.end(); ++it) {
+        seriesOut << "<banner height=\"" << it->height << "\" width=\"" << it->width << "\"><![CDATA[" << it->path << "]]></banner>";
+    }
+
+    // create fanarts
+    for (auto it = series.fanarts.begin(); it != series.fanarts.end(); ++it) {
+        seriesOut << "<fanart height=\"" << it->height << "\" width=\"" << it->width << "\"><![CDATA[" << it->path << "]]></fanart>";
+    }
+
+    // create season poster
+    seriesOut << "<seasonPoster height=\"" << series.seasonPoster.height << "\" width=\"" << series.seasonPoster.width << "\"><![CDATA["
+            << series.seasonPoster.path << "]]></seasonPoster>";
+
+    // create actors
+    for (auto it = series.actors.begin(); it != series.actors.end(); ++it) {
+        seriesOut << "<actor height=\"" << it->actorThumb.height << "\" width=\"" << it->actorThumb.width << "\"><path><![CDATA[" << it->actorThumb.path
+                << "]]></path><name><![CDATA[" << it->name << "]]></name><role><![CDATA[" << it->role << "]]></role></actor>";
+    }
+
+    // create episode
+    seriesOut << "<episode height=\"" << series.episode.episodeImage.height << "\" width=\"" << series.episode.episodeImage.width << "\"><![CDATA["
+            << series.episode.episodeImage.path << "]]></episode>";
+
+    seriesOut << "</series></scraper>";
+    return seriesOut;
+}
+
+std::stringstream cPluginJonglisto::printMovie(cMovie movie) {
+    std::stringstream movieOut;
+    movieOut << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>"
+            << "<scraper><movie>" << "<id>" << movie.movieId << "</id>"
+            << "<adult><![CDATA[" << movie.adult << "]]></adult>"
+            << "<budget><![CDATA[" << movie.budget << "]]></budget>"
+            << "<genre><![CDATA[" << movie.genres << "]]></genre>"
+            << "<homepage><![CDATA[" << movie.homepage << "]]></homepage>"
+            << "<originalTitle><![CDATA[" << movie.originalTitle << "]]></originalTitle>"
+            << "<overview><![CDATA[" << movie.overview << "]]></overview>"
+            << "<popularity><![CDATA[" << movie.popularity << "]]></popularity>"
+            << "<releaseDate><![CDATA[" << movie.releaseDate << "]]></releaseDate>"
+            << "<revenue><![CDATA[" << movie.revenue << "]]></revenue>"
+            << "<runtime><![CDATA[" << movie.runtime << "]]></runtime>"
+            << "<tagline><![CDATA[" << movie.tagline << "]]></tagline>"
+            << "<title><![CDATA[" << movie.title << "]]></title>"
+            << "<voteAverage><![CDATA[" << movie.voteAverage << "]]></voteAverage>";
+
+    // create actors
+    for (auto it = movie.actors.begin(); it != movie.actors.end(); ++it) {
+        movieOut << "<actor height=\"" << it->actorThumb.height << "\" width=\"" << it->actorThumb.width << "\"><path><![CDATA[" << it->actorThumb.path
+                << "]]></path><name><![CDATA[" << it->name << "]]></name><role><![CDATA[" << it->role << "]]></role></actor>";
+    }
+
+    // create fanArts
+    movieOut << "<fanart height=\"" << movie.collectionFanart.height << "\" width=\"" << movie.collectionFanart.width << "\"><![CDATA["
+            << movie.collectionFanart.path << "]]></fanart>";
+    movieOut << "<fanart height=\"" << movie.fanart.height << "\" width=\"" << movie.fanart.width << "\"><![CDATA[" << movie.fanart.path << "]]></fanart>";
+
+    // create poster
+    movieOut << "<poster height=\"" << movie.collectionPoster.height << "\" width=\"" << movie.collectionPoster.width << "\"><![CDATA["
+            << movie.collectionPoster.path << "]]></poster>";
+    movieOut << "<poster height=\"" << movie.poster.height << "\" width=\"" << movie.poster.width << "\"><![CDATA[" << movie.poster.path << "]]></poster>";
+
+    movieOut << "</movie></scraper>";
+    return movieOut;
+}
+
 
 VDRPLUGINCREATOR(cPluginJonglisto); // Don't touch this!
