@@ -10,17 +10,135 @@
 #include <vector>
 #include <map>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <getopt.h>
 #include <vdr/plugin.h>
 #include <vdr/channels.h>
 #include <vdr/epg.h>
+#include <vdr/tools.h>
 
 #include "services/scraper2vdr.h"
 
-static const char *VERSION = "0.0.2";
+static const char *VERSION = "0.0.3";
 static const char *DESCRIPTION = "Tool plugin for jonglisto-ng";
-static const char *MAINMENUENTRY = NULL;
+static const char *MAINMENUENTRY = "Jonglisto";
+
+//***************************************************************************
+// Plugin Main Menu
+//***************************************************************************
+
+class cJonglistoPluginMenu : public cOsdMenu {
+    public:
+        cJonglistoPluginMenu(const char* title, cString host, long int port, cString loc, long int osd);
+        virtual ~cJonglistoPluginMenu() { };
+        virtual eOSState ProcessKey(eKeys key);
+
+    private:
+        long int jonglistoPort;
+        cString jonglistoHost;
+        cString locale;
+        long int osdserverPort;
+};
+
+cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, cString host, long int port, cString loc, long int osd) : cOsdMenu(title) {
+    jonglistoPort = port;
+    jonglistoHost = host;
+    locale = loc;
+    osdserverPort = osd;
+
+    Clear();
+    cOsdMenu::Add(new cOsdItem(tr("Show favourites")));
+    SetHelp(0, 0, 0,0);
+    Display();
+}
+
+eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
+    eOSState state = cOsdMenu::ProcessKey(key);
+
+    if (state != osUnknown)
+        return state;
+
+    switch (key) {
+        case kOk: {
+            if (Current() == 0) {
+                // trigger jonglisto-ng to show favourites
+
+                cString message_fmt = "GET /jonglisto-ng/osdserver?port=%d&command=favourite&locale=%s HTTP/1.1\nHOST: %s\nConnection: close\n\n";
+
+                struct hostent *server;
+                struct sockaddr_in serv_addr;
+                int sockfd, bytes, sent, total;
+                char message[1024];
+
+                sprintf(message, message_fmt, osdserverPort, *locale, *jonglistoHost);
+
+                sockfd = socket(AF_INET, SOCK_STREAM, 0);
+                if (sockfd < 0) {
+                    // ERROR opening socket
+                    esyslog(0, "ERROR: opening socket for jonglisto jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
+                    return osEnd;
+                }
+
+                server = gethostbyname(jonglistoHost);
+                if (server == NULL) {
+                    // ERROR, no such host
+                    esyslog("ERROR: no such host jonglisto-ng server at %s", *jonglistoHost);
+                    return osEnd;
+                }
+
+                memset(&serv_addr,0,sizeof(serv_addr));
+                serv_addr.sin_family = AF_INET;
+                serv_addr.sin_port = htons(jonglistoPort);
+                memcpy(&serv_addr.sin_addr.s_addr,server->h_addr,server->h_length);
+
+                if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) {
+                    // ERROR connecting
+                    esyslog("ERROR: connection failed to jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
+                    return osEnd;
+                }
+
+                total = strlen(message);
+                sent = 0;
+                do {
+                    bytes = write(sockfd, message + sent, total - sent);
+                    if (bytes < 0) {
+                        // ERROR writing message to socket
+                        esyslog("ERROR: writing message to socket to jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
+                    }
+
+                    if (bytes == 0) {
+                        break;
+                    }
+
+                    sent += bytes;
+                } while (sent < total);
+
+                /* no response */
+
+                close(sockfd);
+            }
+            return osEnd;
+        }
+
+        default:
+            break;
+    }
+    return state;
+}
+
+//***************************************************************************
+// Plugin
+//***************************************************************************
 
 class cPluginJonglisto: public cPlugin {
+    long int jonglistoPort;
+    cString jonglistoHost;
+    cString locale;
+    long int osdserverPort;
+
 private:
     std::stringstream printSeries(cSeries series);
     std::stringstream printMovie(cMovie movie);
@@ -59,6 +177,11 @@ cPluginJonglisto::cPluginJonglisto(void) {
     // Initialize any member variables here.
     // DON'T DO ANYTHING ELSE THAT MAY HAVE SIDE EFFECTS, REQUIRE GLOBAL
     // VDR OBJECTS TO EXIST OR PRODUCE ANY OUTPUT!
+
+    jonglistoPort = 8080;
+    jonglistoHost = "localhost";
+    locale = "de";
+    osdserverPort = 2010;
 }
 
 cPluginJonglisto::~cPluginJonglisto() {
@@ -67,11 +190,42 @@ cPluginJonglisto::~cPluginJonglisto() {
 
 const char *cPluginJonglisto::CommandLineHelp(void) {
     // Return a string that describes all known command line options.
-    return NULL;
+    return "  -h <host>, --host=<host>        set the hostname or ip of the jonglisto-ng server\n"
+           "  -p <port>, --port=<port>        set the port of the jonglisto-ng server\n"
+           "  -o <port>, --osdserver=<port>   set the osdserver port, default 2010\n"
+           "  -l <locale>, --locale=<locale>  set the desired locale, (currently de or en available)\n";
 }
 
 bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
     // Implement command line argument processing here if applicable.
+    static const struct option long_options[] = {
+        { "host",      required_argument, NULL, 'h' },
+        { "port",      required_argument, NULL, 'p' },
+        { "osdserver", required_argument, NULL, 'o' },
+        { "locale",    required_argument, NULL, 'l' },
+        { NULL,        no_argument,       NULL,  0  }
+        };
+
+    int c;
+    while ((c = getopt_long(argc, argv, "h:p:o:l", long_options, NULL)) != -1) {
+        switch (c) {
+          case 'h':
+               jonglistoHost = optarg;
+               break;
+          case 'p':
+               jonglistoPort = strtol(optarg, NULL, 0);
+               break;
+          case 'l':
+               locale = optarg;
+               break;
+          case 'o':
+               osdserverPort = strtol(optarg, NULL, 0);
+               break;
+          default:
+               return false;
+          }
+        }
+
     return true;
 }
 
@@ -110,7 +264,7 @@ time_t cPluginJonglisto::WakeupTime(void) {
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
     // Perform the action when selected from the main VDR menu.
-    return NULL;
+    return new cJonglistoPluginMenu("Jonglisto", jonglistoHost, jonglistoPort, locale, osdserverPort);
 }
 
 cMenuSetupPage *cPluginJonglisto::SetupMenu(void) {
@@ -138,7 +292,6 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
 
     return HelpPages;
 }
-
 
 cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, int &ReplyCode) {
     char *rest = const_cast<char*>(Option);
