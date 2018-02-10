@@ -19,10 +19,12 @@
 #include <vdr/channels.h>
 #include <vdr/epg.h>
 #include <vdr/tools.h>
+#include <vdr/config.h>
+#include <vdr/timers.h>
 
 #include "services/scraper2vdr.h"
 
-static const char *VERSION = "0.0.3";
+static const char *VERSION = "0.0.4";
 static const char *DESCRIPTION = "Tool plugin for jonglisto-ng";
 static const char *MAINMENUENTRY = "Jonglisto";
 
@@ -78,7 +80,7 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
                 sockfd = socket(AF_INET, SOCK_STREAM, 0);
                 if (sockfd < 0) {
                     // ERROR opening socket
-                    esyslog(0, "ERROR: opening socket for jonglisto jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
+                    esyslog("ERROR: opening socket for jonglisto jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
                     return osEnd;
                 }
 
@@ -288,6 +290,14 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    Return the scraper information with id.",
             "RINF <id>\n"
             "    Return the scraper information for one recording with id <id>.",
+            "NEWT <settings>\n"
+            "    Create a new timer. Settings must be in the same format as returned\n"
+            "    by the LSTT command. If a SVDRPDefaultHost is configured, the timer\n",
+            "    will be created on this VDR."
+            "NERT <channel id> <start time>\n"
+            "    Create a new timer. Searches an event by channel id and start time and\n",
+            "    uses then the VDR settings.If a SVDRPDefaultHost is configured, the timer\n",
+            "    will be created on this VDR.",
             0 };
 
     return HelpPages;
@@ -297,6 +307,7 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
     char *rest = const_cast<char*>(Option);
     char *channelId;
     char *eventId;
+    char *starttime;
     char *recId;
 
     if (strcasecmp(Command, "EINF") == 0) {
@@ -362,7 +373,94 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             ReplyCode = 950;
             return "no parameter found";
         }
+    } else if (strcasecmp(Command, "NEWT") == 0) {
+        if (*Option) {
+           cTimer *Timer = new cTimer;
+           if (Timer->Parse(Option)) {
+              LOCK_TIMERS_WRITE;
+
+              if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+                  Timer->SetRemote(Setup.SVDRPDefaultHost);
+              }
+
+              Timer->ClrFlags(tfRecording);
+              Timers->Add(Timer);
+
+              cString ErrorMessage;
+              if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
+                  ReplyCode = 952;
+                  return cString::sprintf("Error: %s", *ErrorMessage);
+              } else {
+                  ReplyCode = 250;
+                  return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
+              }
+           } else {
+               ReplyCode = 501;
+               return "Error in timer settings";
+           }
+
+           delete Timer;
+        } else {
+            ReplyCode = 501;
+            return "Missing timer settings";
+        }
+    } else if (strcasecmp(Command, "NERT") == 0) {
+        if (rest && *rest) {
+            if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
+                if ((starttime = strtok_r(rest, " ", &rest)) != NULL) {
+                    LOCK_CHANNELS_READ;
+                    LOCK_SCHEDULES_READ;
+
+                    // find the desired channel
+                    tChannelID chid = tChannelID::FromString(channelId);
+                    const cChannel *channel = Channels->GetByChannelID(chid);
+
+                    if (channel == NULL) {
+                        // unknown channel
+                        ReplyCode = 950;
+                        return cString::sprintf("channel not found: %s", channelId);
+                    }
+
+                    // get desired schedule
+                    const cSchedule *schedule = Schedules->GetSchedule(channel, false);
+                    const cEvent *event = schedule->GetEventAround(60 + strtol(starttime, NULL, 10));
+
+                    if (event == NULL) {
+                        ReplyCode = 952;
+                        return cString::sprintf("event not found: %s -> %lu", channelId, strtol(starttime, NULL, 10));
+                    }
+
+                    LOCK_TIMERS_WRITE;
+                    cTimer *Timer = new cTimer(event);
+
+                    if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+                        Timer->SetRemote(Setup.SVDRPDefaultHost);
+                    }
+
+                    Timer->ClrFlags(tfRecording);
+                    Timers->Add(Timer);
+
+                    cString ErrorMessage;
+                    if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
+                        ReplyCode = 952;
+                        return cString::sprintf("Error: %s", *ErrorMessage);
+                    } else {
+                        return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
+                    }
+                } else {
+                    ReplyCode = 950;
+                    return "parameter <start time> is missing";
+                }
+            } else {
+                ReplyCode = 950;
+                return "parameter <channel id> is missing";
+            }
+        } else {
+            ReplyCode = 950;
+            return "no parameter found";
+        }
     }
+
 
     return NULL;
 }
