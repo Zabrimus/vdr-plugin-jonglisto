@@ -76,8 +76,6 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
 
                 sprintf(message, message_fmt, osdserverPort, *locale, *jonglistoHost);
 
-                esyslog("GET %s", message);
-
                 sockfd = socket(AF_INET, SOCK_STREAM, 0);
                 if (sockfd < 0) {
                     // ERROR opening socket
@@ -270,8 +268,6 @@ time_t cPluginJonglisto::WakeupTime(void) {
 }
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
-    esyslog("LOCALE1 %s", *locale);
-
     // Perform the action when selected from the main VDR menu.
     return new cJonglistoPluginMenu("Jonglisto", jonglistoHost, jonglistoPort, locale, osdserverPort);
 }
