@@ -34,7 +34,7 @@ static const char *MAINMENUENTRY = "Jonglisto";
 
 class cJonglistoPluginMenu : public cOsdMenu {
     public:
-        cJonglistoPluginMenu(const char* title, cString host, long int port, cString loc, long int osd);
+        cJonglistoPluginMenu(const char* title, cString host, const long int port, const cString loc, const long int osd);
         virtual ~cJonglistoPluginMenu() { };
         virtual eOSState ProcessKey(eKeys key);
 
@@ -67,7 +67,6 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
         case kOk: {
             if (Current() == 0) {
                 // trigger jonglisto-ng to show favourites
-
                 cString message_fmt = "GET /jonglisto-ng/osdserver?port=%d&command=favourite&locale=%s HTTP/1.1\nHOST: %s\nConnection: close\n\n";
 
                 struct hostent *server;
@@ -76,6 +75,8 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
                 char message[1024];
 
                 sprintf(message, message_fmt, osdserverPort, *locale, *jonglistoHost);
+
+                esyslog("GET %s", message);
 
                 sockfd = socket(AF_INET, SOCK_STREAM, 0);
                 if (sockfd < 0) {
@@ -201,15 +202,17 @@ const char *cPluginJonglisto::CommandLineHelp(void) {
 bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
     // Implement command line argument processing here if applicable.
     static const struct option long_options[] = {
+        { "locale",    required_argument, NULL, 'l' },
         { "host",      required_argument, NULL, 'h' },
         { "port",      required_argument, NULL, 'p' },
         { "osdserver", required_argument, NULL, 'o' },
-        { "locale",    required_argument, NULL, 'l' },
-        { NULL,        no_argument,       NULL,  0  }
+        {0, 0, 0, 0}
         };
 
     int c;
-    while ((c = getopt_long(argc, argv, "h:p:o:l", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "h:p:o:l:", long_options, NULL)) != -1) {
+        esyslog("PARAM %c -> %s", c, optarg);
+
         switch (c) {
           case 'h':
                jonglistoHost = optarg;
@@ -225,8 +228,10 @@ bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
                break;
           default:
                return false;
-          }
         }
+    }
+
+    esyslog("LOCALE2 %s", *locale);
 
     return true;
 }
@@ -265,6 +270,8 @@ time_t cPluginJonglisto::WakeupTime(void) {
 }
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
+    esyslog("LOCALE1 %s", *locale);
+
     // Perform the action when selected from the main VDR menu.
     return new cJonglistoPluginMenu("Jonglisto", jonglistoHost, jonglistoPort, locale, osdserverPort);
 }
