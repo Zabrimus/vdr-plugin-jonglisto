@@ -14,8 +14,8 @@ Description:
 A plugin which exports scraper2vdr or tvscraper information via SVDRP.
 Used by jongisto-ng to get scraper information.
 
-Additionally some SVDRP commands are implemented.
-``
+Additionally some SVDRP commands are implemented:
+
 EINF <channel id> <event id>
     Return the scraper information with id.
 RINF <id>
@@ -28,7 +28,11 @@ NERT <channel id> <start time>
     Create a new timer. Searches an event by channel id and start time and
     uses then the VDR settings.If a SVDRPDefaultHost is configured, the timer
     will be created on this VDR.
-``
+LSDR
+    List deleted recordings
+UNDR <id>
+    Undelete recording with id <id>. The <id> must be the result of LSDR.
+
 
 Parameters:
 -h <host>, --host=<host>        set the hostname or ip of the jonglisto-ng server

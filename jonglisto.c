@@ -24,7 +24,7 @@
 
 #include "services/scraper2vdr.h"
 
-static const char *VERSION = "0.0.4";
+static const char *VERSION = "0.0.5";
 static const char *DESCRIPTION = "Tool plugin for jonglisto-ng";
 static const char *MAINMENUENTRY = "Jonglisto";
 
@@ -295,12 +295,16 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    Return the scraper information for one recording with id <id>.",
             "NEWT <settings>\n"
             "    Create a new timer. Settings must be in the same format as returned\n"
-            "    by the LSTT command. If a SVDRPDefaultHost is configured, the timer\n",
-            "    will be created on this VDR."
+            "    by the LSTT command. If a SVDRPDefaultHost is configured, the timer\n"
+            "    will be created on this VDR.\n",
             "NERT <channel id> <start time>\n"
-            "    Create a new timer. Searches an event by channel id and start time and\n",
-            "    uses then the VDR settings.If a SVDRPDefaultHost is configured, the timer\n",
-            "    will be created on this VDR.",
+            "    Create a new timer. Searches an event by channel id and start time and\n"
+            "    uses then the VDR settings.If a SVDRPDefaultHost is configured, the timer\n"
+            "    will be created on this VDR.\n",
+            "LSDR\n"
+            "    List deleted recordings\n",
+            "UNDR <id>\n"
+            "    Undelete recording with id <id>. The <id> must be the result of LSDR.\n",
             0 };
 
     return HelpPages;
@@ -457,6 +461,50 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             } else {
                 ReplyCode = 950;
                 return "parameter <channel id> is missing";
+            }
+        } else {
+            ReplyCode = 950;
+            return "no parameter found";
+        }
+    } else if (strcasecmp(Command, "LSDR") == 0) {
+        LOCK_DELETEDRECORDINGS_READ;
+        if (DeletedRecordings->Count()) {
+            const cRecording *Recording = DeletedRecordings->First();
+            std::stringstream recOut;
+
+            while (Recording) {
+                recOut << Recording->Id() << " " << Recording->Title(' ', true) << "\n";
+                Recording = DeletedRecordings->Next(Recording);
+            }
+
+            return recOut.str().c_str();
+        } else {
+            ReplyCode = 550;
+            return "No recordings available";
+        }
+    } else if (strcasecmp(Command, "UNDR") == 0) {
+        if (rest && *rest) {
+            if ((recId = strtok_r(rest, " ", &rest)) != NULL) {
+                LOCK_DELETEDRECORDINGS_WRITE;
+                cRecording *Recording  = const_cast<cRecording*>(DeletedRecordings->GetById(atoi(recId)));
+
+                if (Recording) {
+                    bool re = Recording->Undelete();
+
+                    if (re) {
+                        DeletedRecordings->Update();
+                        return "recording undeleted.";
+                    } else {
+                        ReplyCode = 950;
+                        return "undelete failed. Check log file.";
+                    }
+                } else {
+                    ReplyCode = 950;
+                    return cString::sprintf("Error: recording with id %s does not exist.", recId);
+                }
+            } else {
+                ReplyCode = 950;
+                return "parameter <id> is missing";
             }
         } else {
             ReplyCode = 950;
