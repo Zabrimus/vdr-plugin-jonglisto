@@ -479,7 +479,7 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
 
             return recOut.str().c_str();
         } else {
-            ReplyCode = 550;
+            ReplyCode = 950;
             return "No recordings available";
         }
     } else if (strcasecmp(Command, "UNDR") == 0) {
