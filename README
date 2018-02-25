@@ -11,8 +11,13 @@ See the file COPYING for more information.
 
 Description:
 
-A plugin which exports scraper2vdr or tvscraper information via SVDRP.
-Used by jongisto-ng to get scraper information.
+A plugin which supports jonglisto-ng in several ways.
+
+Menu:
+channel favourite list (needs jonglisto-ng)
+alarm list (needs jonglisto-ng)
+vdr list (needs jonglisto-ng)
+
 
 Additionally some SVDRP commands are implemented:
 
@@ -32,10 +37,11 @@ LSDR
     List deleted recordings
 UNDR <id>
     Undelete recording with id <id>. The <id> must be the result of LSDR.
+SWIT <channel id> [<title>]
+    Show a confirmation message and switch channel, if desired.
+
 
 
 Parameters:
 -h <host>, --host=<host>        set the hostname or ip of the jonglisto-ng server
 -p <port>, --port=<port>        set the port of the jonglisto-ng server
--o <port>, --osdserver=<port>   set the osdserver port, default 2010
--l <locale>, --locale=<locale>  set the desired locale, (currently de or en available)

@@ -21,168 +21,17 @@
 #include <vdr/tools.h>
 #include <vdr/config.h>
 #include <vdr/timers.h>
+#include <vdr/skins.h>
+
+#include "jonglisto.h"
+#include "jonglistoOsd.h"
 
 #include "services/scraper2vdr.h"
-
-static const char *VERSION = "0.0.5";
-static const char *DESCRIPTION = "Tool plugin for jonglisto-ng";
-static const char *MAINMENUENTRY = "Jonglisto";
-
-//***************************************************************************
-// Plugin Main Menu
-//***************************************************************************
-
-class cJonglistoPluginMenu : public cOsdMenu {
-    public:
-        cJonglistoPluginMenu(const char* title, cString host, const long int port, const cString loc, const long int osd);
-        virtual ~cJonglistoPluginMenu() { };
-        virtual eOSState ProcessKey(eKeys key);
-
-    private:
-        long int jonglistoPort;
-        cString jonglistoHost;
-        cString locale;
-        long int osdserverPort;
-};
-
-cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, cString host, long int port, cString loc, long int osd) : cOsdMenu(title) {
-    jonglistoPort = port;
-    jonglistoHost = host;
-    locale = loc;
-    osdserverPort = osd;
-
-    Clear();
-    cOsdMenu::Add(new cOsdItem(tr("Show favourites")));
-    SetHelp(0, 0, 0,0);
-    Display();
-}
-
-eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
-    eOSState state = cOsdMenu::ProcessKey(key);
-
-    if (state != osUnknown)
-        return state;
-
-    switch (key) {
-        case kOk: {
-            if (Current() == 0) {
-                // trigger jonglisto-ng to show favourites
-                cString message_fmt = "GET /jonglisto-ng/osdserver?port=%d&command=favourite&locale=%s HTTP/1.1\nHOST: %s\nConnection: close\n\n";
-
-                struct hostent *server;
-                struct sockaddr_in serv_addr;
-                int sockfd, bytes, sent, total;
-                char message[1024];
-
-                sprintf(message, message_fmt, osdserverPort, *locale, *jonglistoHost);
-
-                sockfd = socket(AF_INET, SOCK_STREAM, 0);
-                if (sockfd < 0) {
-                    // ERROR opening socket
-                    esyslog("ERROR: opening socket for jonglisto jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
-                    return osEnd;
-                }
-
-                server = gethostbyname(jonglistoHost);
-                if (server == NULL) {
-                    // ERROR, no such host
-                    esyslog("ERROR: no such host jonglisto-ng server at %s", *jonglistoHost);
-                    return osEnd;
-                }
-
-                memset(&serv_addr,0,sizeof(serv_addr));
-                serv_addr.sin_family = AF_INET;
-                serv_addr.sin_port = htons(jonglistoPort);
-                memcpy(&serv_addr.sin_addr.s_addr,server->h_addr,server->h_length);
-
-                if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) {
-                    // ERROR connecting
-                    esyslog("ERROR: connection failed to jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
-                    return osEnd;
-                }
-
-                total = strlen(message);
-                sent = 0;
-                do {
-                    bytes = write(sockfd, message + sent, total - sent);
-                    if (bytes < 0) {
-                        // ERROR writing message to socket
-                        esyslog("ERROR: writing message to socket to jonglisto-ng server at %s:%ld", *jonglistoHost, jonglistoPort);
-                    }
-
-                    if (bytes == 0) {
-                        break;
-                    }
-
-                    sent += bytes;
-                } while (sent < total);
-
-                /* no response */
-
-                close(sockfd);
-            }
-            return osEnd;
-        }
-
-        default:
-            break;
-    }
-    return state;
-}
-
-//***************************************************************************
-// Plugin
-//***************************************************************************
-
-class cPluginJonglisto: public cPlugin {
-    long int jonglistoPort;
-    cString jonglistoHost;
-    cString locale;
-    long int osdserverPort;
-
-private:
-    std::stringstream printSeries(cSeries series);
-    std::stringstream printMovie(cMovie movie);
-    cString searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *Data = NULL);
-
-public:
-    cPluginJonglisto(void);
-    virtual ~cPluginJonglisto();
-    virtual const char * Version(void) {
-        return VERSION;
-    }
-    virtual const char * Description(void) {
-        return DESCRIPTION;
-    }
-    virtual const char *CommandLineHelp(void);
-    virtual bool ProcessArgs(int argc, char *argv[]);
-    virtual bool Initialize(void);
-    virtual bool Start(void);
-    virtual void Stop(void);
-    virtual void Housekeeping(void);
-    virtual void MainThreadHook(void);
-    virtual cString Active(void);
-    virtual time_t WakeupTime(void);
-    virtual const char * MainMenuEntry(void) {
-        return MAINMENUENTRY;
-    }
-    virtual cOsdObject * MainMenuAction(void);
-    virtual cMenuSetupPage * SetupMenu(void);
-    virtual bool SetupParse(const char *Name, const char *Value);
-    virtual bool Service(const char *Id, void *Data = NULL);
-    virtual const char **SVDRPHelpPages(void);
-    virtual cString SVDRPCommand(const char *Command, const char *Option, int &ReplyCode);
-};
 
 cPluginJonglisto::cPluginJonglisto(void) {
     // Initialize any member variables here.
     // DON'T DO ANYTHING ELSE THAT MAY HAVE SIDE EFFECTS, REQUIRE GLOBAL
     // VDR OBJECTS TO EXIST OR PRODUCE ANY OUTPUT!
-
-    jonglistoPort = 8080;
-    jonglistoHost = "localhost";
-    locale = "de";
-    osdserverPort = 2010;
 }
 
 cPluginJonglisto::~cPluginJonglisto() {
@@ -193,43 +42,34 @@ const char *cPluginJonglisto::CommandLineHelp(void) {
     // Return a string that describes all known command line options.
     return "  -h <host>, --host=<host>        set the hostname or ip of the jonglisto-ng server\n"
            "  -p <port>, --port=<port>        set the port of the jonglisto-ng server\n"
-           "  -o <port>, --osdserver=<port>   set the osdserver port, default 2010\n"
-           "  -l <locale>, --locale=<locale>  set the desired locale, (currently de or en available)\n";
+           "  -P <port>  --localport=<port>   sets the local SVDRP port\n";
 }
 
 bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
     // Implement command line argument processing here if applicable.
     static const struct option long_options[] = {
-        { "locale",    required_argument, NULL, 'l' },
         { "host",      required_argument, NULL, 'h' },
         { "port",      required_argument, NULL, 'p' },
-        { "osdserver", required_argument, NULL, 'o' },
+        { "localport", required_argument, NULL, 'P' },
         {0, 0, 0, 0}
         };
 
     int c;
-    while ((c = getopt_long(argc, argv, "h:p:o:l:", long_options, NULL)) != -1) {
-        esyslog("PARAM %c -> %s", c, optarg);
-
+    while ((c = getopt_long(argc, argv, "h:p:P:", long_options, NULL)) != -1) {
         switch (c) {
           case 'h':
                jonglistoHost = optarg;
                break;
           case 'p':
-               jonglistoPort = strtol(optarg, NULL, 0);
+               jonglistoPort = atoi(optarg);
                break;
-          case 'l':
-               locale = optarg;
-               break;
-          case 'o':
-               osdserverPort = strtol(optarg, NULL, 0);
+          case 'P':
+               svdrpPort = atoi(optarg);
                break;
           default:
                return false;
         }
     }
-
-    esyslog("LOCALE2 %s", *locale);
 
     return true;
 }
@@ -269,7 +109,15 @@ time_t cPluginJonglisto::WakeupTime(void) {
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
     // Perform the action when selected from the main VDR menu.
-    return new cJonglistoPluginMenu("Jonglisto", jonglistoHost, jonglistoPort, locale, osdserverPort);
+    return new cJonglistoPluginMenu("Jonglisto", jonglistoHost, jonglistoPort, svdrpPort);
+}
+
+const char *cPluginJonglisto::MainMenuEntry(void) {
+    if (*jonglistoHost == NULL || strlen(jonglistoHost) == 0) {
+        return NULL;
+    }
+
+    return MAINMENUENTRY;
 }
 
 cMenuSetupPage *cPluginJonglisto::SetupMenu(void) {
@@ -305,6 +153,8 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    List deleted recordings\n",
             "UNDR <id>\n"
             "    Undelete recording with id <id>. The <id> must be the result of LSDR.\n",
+            "SWIT <channel id> [<title>]\n",
+            "    Show a confirmation message and switch channel, if desired\n",
             0 };
 
     return HelpPages;
@@ -315,6 +165,7 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
     char *channelId;
     char *eventId;
     char *starttime;
+    char *eventTitle;
     char *recId;
 
     if (strcasecmp(Command, "EINF") == 0) {
@@ -509,6 +360,37 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
         } else {
             ReplyCode = 950;
             return "no parameter found";
+        }
+    } else if (strcasecmp(Command, "SWIT") == 0) {
+        if (rest && *rest) {
+            if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
+                eventTitle = rest;
+
+                LOCK_CHANNELS_READ;
+
+                // find the desired channel
+                tChannelID chid = tChannelID::FromString(channelId);
+                const cChannel *channel = Channels->GetByChannelID(chid);
+
+                if (channel == NULL) {
+                    // unknown channel
+                    ReplyCode = 950;
+                    return cString::sprintf("channel not found: %s", channelId);
+                }
+
+                int key = Skins.QueueMessage(eMessageType::mtInfo, *cString::sprintf("%s %s:%s?", tr("Switch channel to"), channel->Name(), eventTitle ? eventTitle : ""), 5 * 60, 5*60);
+                if (key == kOk) {
+                    if (cDevice::PrimaryDevice()->SwitchChannel(channel, true)) {
+                        return "Channel switched";
+                    } else {
+                        ReplyCode = 901;
+                        return "Channel switch failed";
+                    }
+                }
+
+                ReplyCode = 902;
+                return "Channel switch rejected";
+            }
         }
     }
 
