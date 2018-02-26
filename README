@@ -39,7 +39,11 @@ UNDR <id>
     Undelete recording with id <id>. The <id> must be the result of LSDR.
 SWIT <channel id> [<title>]
     Show a confirmation message and switch channel, if desired.
-
+REPC <channel list>
+    Replaces the whole channel list. <channel list> must contain all channels
+    separated by a '~'. Channel format must be the same as returned by LSTC.
+    Colons in the channel name must be replaced by '|'.
+    USE WITH CARE and have a backup of the channels.conf available!
 
 
 Parameters:

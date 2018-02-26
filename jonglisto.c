@@ -153,8 +153,13 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    List deleted recordings\n",
             "UNDR <id>\n"
             "    Undelete recording with id <id>. The <id> must be the result of LSDR.\n",
-            "SWIT <channel id> [<title>]\n",
+            "SWIT <channel id> [<title>]\n"
             "    Show a confirmation message and switch channel, if desired\n",
+            "REPC <channel list>\n"
+            "    Replaces the whole channel list. <channel list> must contain all channels\n"
+            "    separated by a '~'. Channel format must be the same as returned by LSTC.\n"
+            "    Colons in the channel name must be replaced by '|'.\n"
+            "    USE WITH CARE and have a backup of the channels.conf available!",
             0 };
 
     return HelpPages;
@@ -391,6 +396,55 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
                 ReplyCode = 902;
                 return "Channel switch rejected";
             }
+        }
+    } else if (strcasecmp(Command, "REPC") == 0) {
+        if (rest && *rest) {
+            // create list of channels
+            cVector<cChannel*> newChannels;
+
+            char *chstr;
+
+            while ((chstr = strtok_r(rest, "~", &rest)) != NULL) {
+                cChannel c;
+                if (!c.Parse(chstr)) {
+                    // invalid channel -> reject everything
+                    for (int i = 0; i < newChannels.Size(); ++i) {
+                        delete newChannels.At(i);
+                    }
+
+                    ReplyCode = 950;
+                    cString res = cString::sprintf("found invalid channel '%s'. Aborting...", chstr);
+                    return res;
+                }
+
+                cChannel *channel = new cChannel;
+                *channel = c;
+
+                newChannels.Append(channel);
+            }
+
+            LOCK_CHANNELS_WRITE;
+            Channels->SetExplicitModify();
+
+            // Delete all existing channels
+            cChannel *ch;
+            while ((ch = Channels->Last()) != NULL) {
+                Channels->Del(ch);
+            }
+
+            // insert new channels
+            for (int i = 0; i < newChannels.Size(); ++i) {
+                Channels->Add(newChannels.At(i));
+            }
+
+            Channels->ReNumber();
+            Channels->SetModifiedByUser();
+            Channels->SetModified();
+
+            return "channel list updated";
+        } else {
+            ReplyCode = 950;
+            return "Parameter channel list must exists.";
         }
     }
 
