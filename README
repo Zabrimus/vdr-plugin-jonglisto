@@ -13,6 +13,8 @@ Description:
 
 A plugin which supports jonglisto-ng in several ways.
 
+Requires: VDR version > 2.3.1 (tested with VDR 2.3.8)
+
 Menu:
 channel favourite list (needs jonglisto-ng)
 alarm list (needs jonglisto-ng)
