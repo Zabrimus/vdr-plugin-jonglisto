@@ -110,7 +110,7 @@ cJonglistoFavouriteMenu::cJonglistoFavouriteMenu(const char* title) : cOsdMenu(t
     if (Ping()) {
         cStringList response;
 
-        if (svdrpClient->Execute("FAVL", &response)) {
+        if (svdrpClient->Execute(*cString::sprintf("FAVL %d", svdrpPort), &response)) {
             if (favourites.Size() > 0) {
                 favourites.Clear();
             }
