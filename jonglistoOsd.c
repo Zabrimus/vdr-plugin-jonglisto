@@ -116,7 +116,9 @@ cJonglistoFavouriteMenu::cJonglistoFavouriteMenu(const char* title) : cOsdMenu(t
             }
 
             for (int i = 0; i < response.Size(); ++i) {
-                favourites.Append(strdup(response.At(i)));
+                if (startswith(response.At(i), "900")) {
+                    favourites.Append(strdup(response.At(i)));
+                }
             }
         }
     }
@@ -330,7 +332,11 @@ const cEvent* cJonglistoEpgListMenu::GetEvent(const cChannel *ch) {
     LOCK_SCHEDULES_READ;
 
     const cSchedule *schedule = Schedules->GetSchedule(ch, false);
-    return schedule->GetEventAround(currentTime);
+    if (schedule != NULL) {
+        return schedule->GetEventAround(currentTime);
+    } else {
+        return NULL;
+    }
 }
 
 void cJonglistoEpgListMenu::showEpgDetails(const char* title) {
