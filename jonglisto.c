@@ -160,6 +160,14 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    separated by a '~'. Channel format must be the same as returned by LSTC.\n"
             "    Colons in the channel name must be replaced by '|'.\n"
             "    USE WITH CARE and have a backup of the channels.conf available!",
+            "LSTT\n"
+            "    List all timers (same as VDR LSTT command. But also list remote timers\n"
+            "    The aux field contains additionally a flag, if this is a local or remote timer",
+            "UPDT <settings>\n"
+            "    Updates a timer. Settings must be in the same format as returned\n"
+            "    by the LSTT command. If a timer with the same channel, day, start\n"
+            "    and stop time does not yet exist, it will be created.\n"
+            "    In difference to original VDR UPDT this will also update remote timers",
             0 };
 
     return HelpPages;
@@ -446,8 +454,61 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             ReplyCode = 950;
             return "Parameter channel list must exists.";
         }
-    }
+    } else if (strcasecmp(Command, "LSTT") == 0) {
+        std::stringstream timerOut;
+        LOCK_TIMERS_READ;
 
+        bool showRemote = Setup.SVDRPPeering && *Setup.SVDRPDefaultHost;
+
+        if (Timers->Count() > 0) {
+            for (const cTimer *Timer = Timers->First(); Timer; Timer = Timers->Next(Timer)) {
+                if ((Timer->Remote() && showRemote) || !Timer->Remote()) {
+                    timerOut << Timer->Id() << " " << *Timer->ToText(true) << "<remote>" << (Timer->Remote() ? "1" : "0") << "</remote>\n";
+                }
+            }
+
+            ReplyCode = 250;
+            return timerOut.str().c_str();
+        } else {
+            ReplyCode = 550;
+            return "No timers defined";
+        }
+    } else if (strcasecmp(Command, "UPDT") == 0) {
+        if (*Option) {
+            cTimer *Timer = new cTimer;
+            if (Timer->Parse(Option)) {
+                LOCK_TIMERS_WRITE;
+
+                if (cTimer *t = Timers->GetTimer(Timer)) {
+                    t->Parse(Option);
+                    delete Timer;
+                    Timer = t;
+                } else {
+                    Timers->Add(Timer);
+                }
+
+                if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+                    Timer->SetRemote(Setup.SVDRPDefaultHost);
+                }
+
+                cString ErrorMessage;
+                if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
+                    ReplyCode = 952;
+                    return cString::sprintf("Error: %s", *ErrorMessage);
+                } else {
+                    ReplyCode = 250;
+                    return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
+                }
+            } else {
+                ReplyCode = 501;
+                return "Error in timer settings";
+            }
+            delete Timer;
+        } else {
+            ReplyCode = 501;
+            return "Missing timer settings";
+        }
+    }
 
     return NULL;
 }

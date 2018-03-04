@@ -46,6 +46,15 @@ REPC <channel list>
     separated by a '~'. Channel format must be the same as returned by LSTC.
     Colons in the channel name must be replaced by '|'.
     USE WITH CARE and have a backup of the channels.conf available!
+LSTT
+    List all timers (same as VDR LSTT command. But also list remote timers
+    The aux field contains additionally a flag, if this is a local or remote timer
+UPDT <settings>
+    Updates a timer. Settings must be in the same format as returned
+    by the LSTT command. If a timer with the same channel, day, start
+    and stop time does not yet exist, it will be created.
+    In difference to original VDR UPDT this will also update remote timers or
+    move local timers to the remove VDR (if SVDRPDefaultHost is defined)
 
 
 Parameters:
