@@ -54,7 +54,12 @@ UPDT <settings>
     by the LSTT command. If a timer with the same channel, day, start
     and stop time does not yet exist, it will be created.
     In difference to original VDR UPDT this will also update remote timers or
-    move local timers to the remove VDR (if SVDRPDefaultHost is defined)
+    move local timers to the remove VDR. Movement only if DefaultSVDRHost is
+    configured.
+DELT <id>
+    Delete the timer with the given id. If this timer is currently recording,
+    the recording will be stopped without any warning.
+    In difference to the original VDR DELT, this will also delete remote timers.
 
 
 Parameters:

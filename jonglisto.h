@@ -24,6 +24,7 @@ private:
     cString searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *Data = NULL);
 
     cTimer* GetTimer(const cTimer *Timer);
+    cTimer* GetTimer(long int id);
 
 public:
     cPluginJonglisto(void);

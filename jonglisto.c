@@ -167,7 +167,13 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    Updates a timer. Settings must be in the same format as returned\n"
             "    by the LSTT command. If a timer with the same channel, day, start\n"
             "    and stop time does not yet exist, it will be created.\n"
-            "    In difference to original VDR UPDT this will also update remote timers",
+            "    In difference to original VDR UPDT this will also update remote timers or\n"
+            "    move local timers to the remove VDR. Movement only if DefaultSVDRHost is\n"
+            "    configured.",
+            "DELT <id>\n"
+            "    Delete the timer with the given id. If this timer is currently recording,\n"
+            "    the recording will be stopped without any warning.\n"
+            "    In difference to the original VDR DELT, this will also delete remote timers.",
             0 };
 
     return HelpPages;
@@ -458,7 +464,7 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
         std::stringstream timerOut;
         LOCK_TIMERS_READ;
 
-        bool showRemote = Setup.SVDRPPeering && *Setup.SVDRPDefaultHost;
+        bool showRemote = Setup.SVDRPPeering;
 
         if (Timers->Count() > 0) {
             for (const cTimer *Timer = Timers->First(); Timer; Timer = Timers->Next(Timer)) {
@@ -479,22 +485,26 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             if (Timer->Parse(Option)) {
                 LOCK_TIMERS_WRITE;
 
+                bool isNewTimer = true;
+
                 cTimer *oldTimer = GetTimer(Timer);
 
                 if (oldTimer != NULL) {
                     oldTimer->Parse(Option);
                     delete Timer;
                     Timer = oldTimer;
+
+                    isNewTimer = false;
                 } else {
                     Timers->Add(Timer);
-                }
 
-                if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
-                    Timer->SetRemote(Setup.SVDRPDefaultHost);
+                    if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+                        Timer->SetRemote(Setup.SVDRPDefaultHost);
+                    }
                 }
 
                 cString ErrorMessage;
-                if (!HandleRemoteTimerModifications(Timer, Timer, &ErrorMessage)) {
+                if (!HandleRemoteTimerModifications(Timer, isNewTimer ? NULL : Timer, &ErrorMessage)) {
                     ReplyCode = 952;
                     return cString::sprintf("Error: %s", *ErrorMessage);
                 } else {
@@ -510,13 +520,43 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             ReplyCode = 501;
             return "Missing timer settings";
         }
+    } else if (strcasecmp(Command, "DELT") == 0) {
+        if (*Option) {
+            LOCK_TIMERS_WRITE;
+
+            cTimer *Timer = GetTimer(strtol(Option, NULL, 10));
+
+            if (Timer->Remote()) {
+                cString ErrorMessage;
+                if (!HandleRemoteTimerModifications(NULL, Timer, &ErrorMessage)) {
+                    ReplyCode = 952;
+                    return cString::sprintf("Error: %s", *ErrorMessage);
+                } else {
+                    ReplyCode = 250;
+                    return cString::sprintf("Timer \"%s\" deleted", Option);
+                }
+            } else {
+                Timers->SetExplicitModify();
+                if (Timer->Recording()) {
+                    Timer->Skip();
+                }
+                Timers->Del(Timer);
+                Timers->SetModified();
+
+                ReplyCode = 250;
+                return cString::sprintf("Timer \"%s\" deleted", Option);
+            }
+        } else {
+            ReplyCode = 950;
+            return "Missing timer id";
+        }
     }
 
     return NULL;
 }
 
 cTimer *cPluginJonglisto::GetTimer(const cTimer *Timer) {
-    bool showRemote = Setup.SVDRPPeering && *Setup.SVDRPDefaultHost;
+    bool showRemote = Setup.SVDRPPeering;
 
     LOCK_TIMERS_READ;
 
@@ -535,6 +575,23 @@ cTimer *cPluginJonglisto::GetTimer(const cTimer *Timer) {
 
     return NULL;
 }
+
+cTimer *cPluginJonglisto::GetTimer(long int id) {
+    bool showRemote = Setup.SVDRPPeering;
+
+    LOCK_TIMERS_READ;
+
+    if (Timers->Count() > 0) {
+        for (const cTimer *ti = Timers->First(); ti; ti = Timers->Next(ti)) {
+            if (((ti->Remote() && showRemote) || !ti->Remote()) && (ti->Id() == id)) {
+                return const_cast<cTimer*>(ti);
+            }
+        }
+    }
+
+    return NULL;
+}
+
 
 cString cPluginJonglisto::searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *eventType) {
     cPlugin *p = cPluginManager::CallFirstService("GetEventType", eventType);
