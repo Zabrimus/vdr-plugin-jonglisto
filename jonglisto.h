@@ -23,6 +23,8 @@ private:
     std::stringstream printMovie(cMovie movie);
     cString searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *Data = NULL);
 
+    cTimer* GetTimer(const cTimer *Timer);
+
 public:
     cPluginJonglisto(void);
     virtual ~cPluginJonglisto();

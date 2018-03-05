@@ -479,10 +479,12 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
             if (Timer->Parse(Option)) {
                 LOCK_TIMERS_WRITE;
 
-                if (cTimer *t = Timers->GetTimer(Timer)) {
-                    t->Parse(Option);
+                cTimer *oldTimer = GetTimer(Timer);
+
+                if (oldTimer != NULL) {
+                    oldTimer->Parse(Option);
                     delete Timer;
-                    Timer = t;
+                    Timer = oldTimer;
                 } else {
                     Timers->Add(Timer);
                 }
@@ -492,7 +494,7 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
                 }
 
                 cString ErrorMessage;
-                if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
+                if (!HandleRemoteTimerModifications(Timer, Timer, &ErrorMessage)) {
                     ReplyCode = 952;
                     return cString::sprintf("Error: %s", *ErrorMessage);
                 } else {
@@ -513,6 +515,26 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
     return NULL;
 }
 
+cTimer *cPluginJonglisto::GetTimer(const cTimer *Timer) {
+    bool showRemote = Setup.SVDRPPeering && *Setup.SVDRPDefaultHost;
+
+    LOCK_TIMERS_READ;
+
+    if (Timers->Count() > 0) {
+        for (const cTimer *ti = Timers->First(); ti; ti = Timers->Next(ti)) {
+            if (((ti->Remote() && showRemote) || !ti->Remote()) &&
+                    (ti->Channel() == Timer->Channel()) &&
+                    ((ti->WeekDays() && (ti->WeekDays() == Timer->WeekDays())) || (!ti->WeekDays() && (ti->Day() == Timer->Day()))) &&
+                    (ti->Start() == Timer->Start()) &&
+                    (ti->Stop() == Timer->Stop()))
+            {
+                return const_cast<cTimer*>(ti);
+            }
+        }
+    }
+
+    return NULL;
+}
 
 cString cPluginJonglisto::searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *eventType) {
     cPlugin *p = cPluginManager::CallFirstService("GetEventType", eventType);
