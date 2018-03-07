@@ -4,7 +4,9 @@ VDR Plugin 'jonglisto' Revision History
 2018-02-18: Version 0.1.0
 
 - favourites menu implemented
-- new SVDRP command SWIT implemented
+- vdr menu implemented
+- alaem menu implemented
+- new SVDRP commands implemented (for the whole list see README)
 - svdrp client which uses jonglisto-ng to get information
 
 2018-01-23: Version 0.0.1
