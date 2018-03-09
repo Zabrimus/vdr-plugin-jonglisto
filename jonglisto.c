@@ -178,8 +178,11 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    Move the recording with the given id. Similar to VDR MOVR command, except\n"
             "    this command accepts a list of ids and names (separated by '/'). e.g\n"
             "    '/1 name1/2 name2/'\n"
-            "    This command tries to move/rename as much as possible and ignores errors,\n",
+            "    This command tries to move/rename as much as possible and ignores errors,\n"
             "    'recording in use', 'recording does not' exists and such",
+            "DELR <id> [/<id>...\n"
+            "    Deletes recordings with the specified ids. Same behavior as VDR DELR, but \n"
+            "    deleting multiple recordings are possible",
             0 };
 
     return HelpPages;
@@ -210,6 +213,8 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
         return cmdDELT(Command, Option, ReplyCode);
     } else if (strcasecmp(Command, "MOVR") == 0) {
         return cmdMOVR(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "DELR") == 0) {
+        return cmdDELR(Command, Option, ReplyCode);
     }
 
     return NULL;
@@ -685,34 +690,43 @@ cString cPluginJonglisto::cmdMOVR(const char *Command, const char *Option, int &
     }
 }
 
-/*
+cString cPluginJonglisto::cmdDELR(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+    char *idstr;
+    int countErrors = 0;
+    int countOk = 0;
+
+    if (rest && *rest) {
         LOCK_RECORDINGS_WRITE;
         Recordings->SetExplicitModify();
-        if (cRecording *Recording = Recordings->GetById(strtol(num, NULL, 10))) {
-           if (int RecordingInUse = Recording->IsInUse())
-              Reply(550, "%s", *RecordingInUseMessage(RecordingInUse, Option, Recording));
-           else {
-              if (c)
-                 option = skipspace(++option);
-              if (*option) {
-                 cString oldName = Recording->Name();
-                 if ((Recording = Recordings->GetByName(Recording->FileName())) != NULL && Recording->ChangeName(option)) {
-                    Recordings->SetModified();
-                    Recordings->TouchUpdate();
-                    Reply(250, "Recording \"%s\" moved to \"%s\"", *oldName, Recording->Name());
-                    }
-                 else
-                    Reply(554, "Error while moving recording \"%s\" to \"%s\"!", *oldName, option);
-                 }
-              else
-                 Reply(501, "Missing new recording name");
-              }
-           }
-        else
-           Reply(550, "Recording \"%s\" not found", num);
-        }
- */
 
+        while ((idstr = strtok_r(rest, " ", &rest)) != NULL) {
+           if (isnumber(idstr)) {
+               if (cRecording *Recording = Recordings->GetById(strtol(idstr, NULL, 10))) {
+                  if (Recording->IsInUse()) {
+                     countErrors++;
+                  } else {
+                     if (Recording->Delete()) {
+                        Recordings->DelByName(Recording->FileName());
+                        countOk++;
+                     } else {
+                        countErrors++;
+                     }
+                  }
+               }
+           }
+        }
+
+        Recordings->SetModified();
+        Recordings->TouchUpdate();
+
+        ReplyCode = 900;
+        return cString::sprintf("Recordings deleted (ok/error): %d/%d", countOk, countErrors);
+    } else {
+        ReplyCode = 950;
+        return "no parameter found";
+    }
+}
 
 cTimer *cPluginJonglisto::GetTimer(const cTimer *Timer) {
     bool showRemote = Setup.SVDRPPeering;

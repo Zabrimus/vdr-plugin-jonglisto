@@ -1,0 +1,5 @@
+TODOs in no specific order:
+
+- the command DELR unfortunetly calls Recordings->DelByName, which itself broadcast the UPDR command.
+  Therefore this implementation exists only for convenience.
+  A faster solution without the broadcast UPDR is desired.

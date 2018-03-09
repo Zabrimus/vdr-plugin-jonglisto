@@ -38,6 +38,7 @@ private:
     cString cmdUPDT(const char *Command, const char *Option, int &ReplyCode);
     cString cmdDELT(const char *Command, const char *Option, int &ReplyCode);
     cString cmdMOVR(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdDELR(const char *Command, const char *Option, int &ReplyCode);
 
 public:
     cPluginJonglisto(void);
