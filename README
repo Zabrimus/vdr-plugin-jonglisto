@@ -60,6 +60,11 @@ DELT <id>
     Delete the timer with the given id. If this timer is currently recording,
     the recording will be stopped without any warning.
     In difference to the original VDR DELT, this will also delete remote timers.
+MOVR [/<id> <new name>[/<id> <new name>]...]
+    Move the recording with the given id. Similar to VDR MOVR command, except
+    this command accepts a list of ids and names (separated by '/'). e.g
+    '/1 name1/2 name2/'
+
 
 
 Parameters:

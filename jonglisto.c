@@ -174,218 +174,57 @@ const char **cPluginJonglisto::SVDRPHelpPages(void) {
             "    Delete the timer with the given id. If this timer is currently recording,\n"
             "    the recording will be stopped without any warning.\n"
             "    In difference to the original VDR DELT, this will also delete remote timers.",
+            "MOVR [/<id> <new name>[/<id> <new name>]...]\n"
+            "    Move the recording with the given id. Similar to VDR MOVR command, except\n"
+            "    this command accepts a list of ids and names (separated by '/'). e.g\n"
+            "    '/1 name1/2 name2/'\n"
+            "    This command tries to move/rename as much as possible and ignores errors,\n",
+            "    'recording in use', 'recording does not' exists and such",
             0 };
 
     return HelpPages;
 }
 
 cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, int &ReplyCode) {
+    if (strcasecmp(Command, "EINF") == 0) {
+        return cmdEINF(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "RINF") == 0) {
+        return cmdRINF(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "NEWT") == 0) {
+        return cmdNEWT(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "NERT") == 0) {
+        return cmdNERT(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "LSDR") == 0) {
+        return cmdLSDR(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "UNDR") == 0) {
+        return cmdUNDR(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "SWIT") == 0) {
+        return cmdSWIT(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "REPC") == 0) {
+        return cmdREPC(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "LSTT") == 0) {
+        return cmdLSTT(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "UPDT") == 0) {
+        return cmdUPDT(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "DELT") == 0) {
+        return cmdDELT(Command, Option, ReplyCode);
+    } else if (strcasecmp(Command, "MOVR") == 0) {
+        return cmdMOVR(Command, Option, ReplyCode);
+    }
+
+    return NULL;
+}
+
+cString cPluginJonglisto::cmdEINF(const char *Command, const char *Option, int &ReplyCode) {
     char *rest = const_cast<char*>(Option);
     char *channelId;
     char *eventId;
-    char *starttime;
-    char *eventTitle;
-    char *recId;
 
-    if (strcasecmp(Command, "EINF") == 0) {
-        if (rest && *rest) {
-            if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
-                if ((eventId = strtok_r(rest, " ", &rest)) != NULL) {
-                    LOCK_CHANNELS_READ;
-                    LOCK_SCHEDULES_READ;
-
-                    // find the desired channel
-                    tChannelID chid = tChannelID::FromString(channelId);
-                    const cChannel *channel = Channels->GetByChannelID(chid);
-
-                    if (channel == NULL) {
-                        // unknown channel
-                        ReplyCode = 950;
-                        return cString::sprintf("channel not found: %s", channelId);
-                    }
-
-                    // get desired schedule
-                    const cSchedule *schedule = Schedules->GetSchedule(channel, false);
-                    const cEvent *event = schedule->GetEvent(strtol(eventId, NULL, 10));
-
-                    if (event == NULL) {
-                        ReplyCode = 952;
-                        return cString::sprintf("event not found: %s -> %lu", eventId, strtol(eventId, NULL, 10));
-                    }
-
-                    // get event type
-                    ScraperGetEventType eventType;
-                    eventType.event = event;
-
-                    return searchAndPrintEvent(ReplyCode, &eventType);
-                } else {
-                    ReplyCode = 950;
-                    return "parameter <event id> is missing";
-                }
-            } else {
-                ReplyCode = 950;
-                return "parameter <channel id> is missing";
-            }
-        } else {
-            ReplyCode = 950;
-            return "no parameter found";
-        }
-    } else if (strcasecmp(Command, "RINF") == 0) {
-        if (rest && *rest) {
-            if ((recId = strtok_r(rest, " ", &rest)) != NULL) {
-
-                LOCK_RECORDINGS_READ
-                const cRecording *rec = Recordings->Get(atoi(recId) - 1);
-
-                // get event type
-                ScraperGetEventType eventType;
-                eventType.recording = rec;
-
-                return searchAndPrintEvent(ReplyCode, &eventType);
-            } else {
-                ReplyCode = 950;
-                return "parameter <recstart> is missing";
-            }
-        } else {
-            ReplyCode = 950;
-            return "no parameter found";
-        }
-    } else if (strcasecmp(Command, "NEWT") == 0) {
-        if (*Option) {
-           cTimer *Timer = new cTimer;
-           if (Timer->Parse(Option)) {
-              LOCK_TIMERS_WRITE;
-
-              if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
-                  Timer->SetRemote(Setup.SVDRPDefaultHost);
-              }
-
-              Timer->ClrFlags(tfRecording);
-              Timers->Add(Timer);
-
-              cString ErrorMessage;
-              if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
-                  ReplyCode = 952;
-                  return cString::sprintf("Error: %s", *ErrorMessage);
-              } else {
-                  ReplyCode = 250;
-                  return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
-              }
-           } else {
-               ReplyCode = 501;
-               return "Error in timer settings";
-           }
-
-           delete Timer;
-        } else {
-            ReplyCode = 501;
-            return "Missing timer settings";
-        }
-    } else if (strcasecmp(Command, "NERT") == 0) {
-        if (rest && *rest) {
-            if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
-                if ((starttime = strtok_r(rest, " ", &rest)) != NULL) {
-                    LOCK_CHANNELS_READ;
-                    LOCK_SCHEDULES_READ;
-
-                    // find the desired channel
-                    tChannelID chid = tChannelID::FromString(channelId);
-                    const cChannel *channel = Channels->GetByChannelID(chid);
-
-                    if (channel == NULL) {
-                        // unknown channel
-                        ReplyCode = 950;
-                        return cString::sprintf("channel not found: %s", channelId);
-                    }
-
-                    // get desired schedule
-                    const cSchedule *schedule = Schedules->GetSchedule(channel, false);
-                    const cEvent *event = schedule->GetEventAround(60 + strtol(starttime, NULL, 10));
-
-                    if (event == NULL) {
-                        ReplyCode = 952;
-                        return cString::sprintf("event not found: %s -> %lu", channelId, strtol(starttime, NULL, 10));
-                    }
-
-                    LOCK_TIMERS_WRITE;
-                    cTimer *Timer = new cTimer(event);
-
-                    if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
-                        Timer->SetRemote(Setup.SVDRPDefaultHost);
-                    }
-
-                    Timer->ClrFlags(tfRecording);
-                    Timers->Add(Timer);
-
-                    cString ErrorMessage;
-                    if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
-                        ReplyCode = 952;
-                        return cString::sprintf("Error: %s", *ErrorMessage);
-                    } else {
-                        return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
-                    }
-                } else {
-                    ReplyCode = 950;
-                    return "parameter <start time> is missing";
-                }
-            } else {
-                ReplyCode = 950;
-                return "parameter <channel id> is missing";
-            }
-        } else {
-            ReplyCode = 950;
-            return "no parameter found";
-        }
-    } else if (strcasecmp(Command, "LSDR") == 0) {
-        LOCK_DELETEDRECORDINGS_READ;
-        if (DeletedRecordings->Count()) {
-            const cRecording *Recording = DeletedRecordings->First();
-            std::stringstream recOut;
-
-            while (Recording) {
-                recOut << Recording->Id() << " " << Recording->Title(' ', true) << "\n";
-                Recording = DeletedRecordings->Next(Recording);
-            }
-
-            return recOut.str().c_str();
-        } else {
-            ReplyCode = 950;
-            return "No recordings available";
-        }
-    } else if (strcasecmp(Command, "UNDR") == 0) {
-        if (rest && *rest) {
-            if ((recId = strtok_r(rest, " ", &rest)) != NULL) {
-                LOCK_DELETEDRECORDINGS_WRITE;
-                cRecording *Recording  = const_cast<cRecording*>(DeletedRecordings->GetById(atoi(recId)));
-
-                if (Recording) {
-                    bool re = Recording->Undelete();
-
-                    if (re) {
-                        DeletedRecordings->Update();
-                        return "recording undeleted.";
-                    } else {
-                        ReplyCode = 950;
-                        return "undelete failed. Check log file.";
-                    }
-                } else {
-                    ReplyCode = 950;
-                    return cString::sprintf("Error: recording with id %s does not exist.", recId);
-                }
-            } else {
-                ReplyCode = 950;
-                return "parameter <id> is missing";
-            }
-        } else {
-            ReplyCode = 950;
-            return "no parameter found";
-        }
-    } else if (strcasecmp(Command, "SWIT") == 0) {
-        if (rest && *rest) {
-            if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
-                eventTitle = rest;
-
+    if (rest && *rest) {
+        if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
+            if ((eventId = strtok_r(rest, " ", &rest)) != NULL) {
                 LOCK_CHANNELS_READ;
+                LOCK_SCHEDULES_READ;
 
                 // find the desired channel
                 tChannelID chid = tChannelID::FromString(channelId);
@@ -397,163 +236,483 @@ cString cPluginJonglisto::SVDRPCommand(const char *Command, const char *Option, 
                     return cString::sprintf("channel not found: %s", channelId);
                 }
 
-                int key = Skins.QueueMessage(eMessageType::mtInfo, *cString::sprintf("%s %s:%s?", tr("Switch channel to"), channel->Name(), eventTitle ? eventTitle : ""), 5 * 60, 5*60);
-                if (key == kOk) {
-                    if (cDevice::PrimaryDevice()->SwitchChannel(channel, true)) {
-                        return "Channel switched";
-                    } else {
-                        ReplyCode = 901;
-                        return "Channel switch failed";
-                    }
+                // get desired schedule
+                const cSchedule *schedule = Schedules->GetSchedule(channel, false);
+                const cEvent *event = schedule->GetEvent(strtol(eventId, NULL, 10));
+
+                if (event == NULL) {
+                    ReplyCode = 952;
+                    return cString::sprintf("event not found: %s -> %lu", eventId, strtol(eventId, NULL, 10));
                 }
 
-                ReplyCode = 902;
-                return "Channel switch rejected";
+                // get event type
+                ScraperGetEventType eventType;
+                eventType.event = event;
+
+                return searchAndPrintEvent(ReplyCode, &eventType);
+            } else {
+                ReplyCode = 950;
+                return "parameter <event id> is missing";
             }
-        }
-    } else if (strcasecmp(Command, "REPC") == 0) {
-        if (rest && *rest) {
-            // create list of channels
-            cVector<cChannel*> newChannels;
-
-            char *chstr;
-
-            while ((chstr = strtok_r(rest, "~", &rest)) != NULL) {
-                cChannel c;
-                if (!c.Parse(chstr)) {
-                    // invalid channel -> reject everything
-                    for (int i = 0; i < newChannels.Size(); ++i) {
-                        delete newChannels.At(i);
-                    }
-
-                    ReplyCode = 950;
-                    cString res = cString::sprintf("found invalid channel '%s'. Aborting...", chstr);
-                    return res;
-                }
-
-                cChannel *channel = new cChannel;
-                *channel = c;
-
-                newChannels.Append(channel);
-            }
-
-            LOCK_CHANNELS_WRITE;
-            Channels->SetExplicitModify();
-
-            // Delete all existing channels
-            cChannel *ch;
-            while ((ch = Channels->Last()) != NULL) {
-                Channels->Del(ch);
-            }
-
-            // insert new channels
-            for (int i = 0; i < newChannels.Size(); ++i) {
-                Channels->Add(newChannels.At(i));
-            }
-
-            Channels->ReNumber();
-            Channels->SetModifiedByUser();
-            Channels->SetModified();
-
-            return "channel list updated";
         } else {
             ReplyCode = 950;
-            return "Parameter channel list must exists.";
+            return "parameter <channel id> is missing";
         }
-    } else if (strcasecmp(Command, "LSTT") == 0) {
-        std::stringstream timerOut;
-        LOCK_TIMERS_READ;
+    } else {
+        ReplyCode = 950;
+        return "no parameter found";
+    }
+}
 
-        bool showRemote = Setup.SVDRPPeering;
+cString cPluginJonglisto::cmdRINF(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+    char *recId;
 
-        if (Timers->Count() > 0) {
-            for (const cTimer *Timer = Timers->First(); Timer; Timer = Timers->Next(Timer)) {
-                if ((Timer->Remote() && showRemote) || !Timer->Remote()) {
-                    timerOut << Timer->Id() << " " << *Timer->ToText(true) << "<remote>" << (Timer->Remote() ? "1" : "0") << "</remote>\n";
-                }
-            }
+    if (rest && *rest) {
+        if ((recId = strtok_r(rest, " ", &rest)) != NULL) {
 
-            ReplyCode = 250;
-            return timerOut.str().c_str();
+            LOCK_RECORDINGS_READ
+            const cRecording *rec = Recordings->Get(atoi(recId) - 1);
+
+            // get event type
+            ScraperGetEventType eventType;
+            eventType.recording = rec;
+
+            return searchAndPrintEvent(ReplyCode, &eventType);
         } else {
-            ReplyCode = 550;
-            return "No timers defined";
+            ReplyCode = 950;
+            return "parameter <recstart> is missing";
         }
-    } else if (strcasecmp(Command, "UPDT") == 0) {
-        if (*Option) {
-            cTimer *Timer = new cTimer;
-            if (Timer->Parse(Option)) {
-                LOCK_TIMERS_WRITE;
+    } else {
+        ReplyCode = 950;
+        return "no parameter found";
+    }
+}
 
-                bool isNewTimer = true;
+cString cPluginJonglisto::cmdNEWT(const char *Command, const char *Option, int &ReplyCode) {
+    if (*Option) {
+       cTimer *Timer = new cTimer;
+       if (Timer->Parse(Option)) {
+          LOCK_TIMERS_WRITE;
 
-                cTimer *oldTimer = GetTimer(Timer);
+          if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+              Timer->SetRemote(Setup.SVDRPDefaultHost);
+          }
 
-                if (oldTimer != NULL) {
-                    oldTimer->Parse(Option);
-                    delete Timer;
-                    Timer = oldTimer;
+          Timer->ClrFlags(tfRecording);
+          Timers->Add(Timer);
 
-                    isNewTimer = false;
-                } else {
-                    Timers->Add(Timer);
+          cString ErrorMessage;
+          if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
+              ReplyCode = 952;
+              return cString::sprintf("Error: %s", *ErrorMessage);
+          } else {
+              ReplyCode = 250;
+              return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
+          }
+       } else {
+           ReplyCode = 501;
+           return "Error in timer settings";
+       }
 
-                    if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
-                        Timer->SetRemote(Setup.SVDRPDefaultHost);
-                    }
+       delete Timer;
+    } else {
+        ReplyCode = 501;
+        return "Missing timer settings";
+    }
+}
+
+cString cPluginJonglisto::cmdNERT(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+    char *channelId;
+    char *starttime;
+
+    if (rest && *rest) {
+        if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
+            if ((starttime = strtok_r(rest, " ", &rest)) != NULL) {
+                LOCK_CHANNELS_READ;
+                LOCK_SCHEDULES_READ;
+
+                // find the desired channel
+                tChannelID chid = tChannelID::FromString(channelId);
+                const cChannel *channel = Channels->GetByChannelID(chid);
+
+                if (channel == NULL) {
+                    // unknown channel
+                    ReplyCode = 950;
+                    return cString::sprintf("channel not found: %s", channelId);
                 }
+
+                // get desired schedule
+                const cSchedule *schedule = Schedules->GetSchedule(channel, false);
+                const cEvent *event = schedule->GetEventAround(60 + strtol(starttime, NULL, 10));
+
+                if (event == NULL) {
+                    ReplyCode = 952;
+                    return cString::sprintf("event not found: %s -> %lu", channelId, strtol(starttime, NULL, 10));
+                }
+
+                LOCK_TIMERS_WRITE;
+                cTimer *Timer = new cTimer(event);
+
+                if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+                    Timer->SetRemote(Setup.SVDRPDefaultHost);
+                }
+
+                Timer->ClrFlags(tfRecording);
+                Timers->Add(Timer);
 
                 cString ErrorMessage;
-                if (!HandleRemoteTimerModifications(Timer, isNewTimer ? NULL : Timer, &ErrorMessage)) {
+                if (!HandleRemoteTimerModifications(Timer, NULL, &ErrorMessage)) {
                     ReplyCode = 952;
                     return cString::sprintf("Error: %s", *ErrorMessage);
                 } else {
-                    ReplyCode = 250;
                     return cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
                 }
             } else {
-                ReplyCode = 501;
-                return "Error in timer settings";
+                ReplyCode = 950;
+                return "parameter <start time> is missing";
             }
-            delete Timer;
         } else {
-            ReplyCode = 501;
-            return "Missing timer settings";
+            ReplyCode = 950;
+            return "parameter <channel id> is missing";
         }
-    } else if (strcasecmp(Command, "DELT") == 0) {
-        if (*Option) {
-            LOCK_TIMERS_WRITE;
+    } else {
+        ReplyCode = 950;
+        return "no parameter found";
+    }
+}
 
-            cTimer *Timer = GetTimer(strtol(Option, NULL, 10));
+cString cPluginJonglisto::cmdLSDR(const char *Command, const char *Option, int &ReplyCode) {
+    LOCK_DELETEDRECORDINGS_READ;
+    if (DeletedRecordings->Count()) {
+        const cRecording *Recording = DeletedRecordings->First();
+        std::stringstream recOut;
 
-            if (Timer->Remote()) {
-                cString ErrorMessage;
-                if (!HandleRemoteTimerModifications(NULL, Timer, &ErrorMessage)) {
-                    ReplyCode = 952;
-                    return cString::sprintf("Error: %s", *ErrorMessage);
+        while (Recording) {
+            recOut << Recording->Id() << " " << Recording->Title(' ', true) << "\n";
+            Recording = DeletedRecordings->Next(Recording);
+        }
+
+        return recOut.str().c_str();
+    } else {
+        ReplyCode = 950;
+        return "No recordings available";
+    }
+}
+
+cString cPluginJonglisto::cmdUNDR(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+    char *recId;
+
+    if (rest && *rest) {
+        if ((recId = strtok_r(rest, " ", &rest)) != NULL) {
+            LOCK_DELETEDRECORDINGS_WRITE;
+            cRecording *Recording  = const_cast<cRecording*>(DeletedRecordings->GetById(atoi(recId)));
+
+            if (Recording) {
+                bool re = Recording->Undelete();
+
+                if (re) {
+                    DeletedRecordings->Update();
+                    return "recording undeleted.";
                 } else {
-                    ReplyCode = 250;
-                    return cString::sprintf("Timer \"%s\" deleted", Option);
+                    ReplyCode = 950;
+                    return "undelete failed. Check log file.";
                 }
             } else {
-                Timers->SetExplicitModify();
-                if (Timer->Recording()) {
-                    Timer->Skip();
-                }
-                Timers->Del(Timer);
-                Timers->SetModified();
+                ReplyCode = 950;
+                return cString::sprintf("Error: recording with id %s does not exist.", recId);
+            }
+        } else {
+            ReplyCode = 950;
+            return "parameter <id> is missing";
+        }
+    } else {
+        ReplyCode = 950;
+        return "no parameter found";
+    }
+}
 
+cString cPluginJonglisto::cmdSWIT(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+    char *channelId;
+    char *eventTitle;
+
+    if (rest && *rest) {
+        if ((channelId = strtok_r(rest, " ", &rest)) != NULL) {
+            eventTitle = rest;
+
+            LOCK_CHANNELS_READ;
+
+            // find the desired channel
+            tChannelID chid = tChannelID::FromString(channelId);
+            const cChannel *channel = Channels->GetByChannelID(chid);
+
+            if (channel == NULL) {
+                // unknown channel
+                ReplyCode = 950;
+                return cString::sprintf("channel not found: %s", channelId);
+            }
+
+            int key = Skins.QueueMessage(eMessageType::mtInfo, *cString::sprintf("%s %s:%s?", tr("Switch channel to"), channel->Name(), eventTitle ? eventTitle : ""), 5 * 60, 5*60);
+            if (key == kOk) {
+                if (cDevice::PrimaryDevice()->SwitchChannel(channel, true)) {
+                    return "Channel switched";
+                } else {
+                    ReplyCode = 901;
+                    return "Channel switch failed";
+                }
+            }
+
+            ReplyCode = 902;
+            return "Channel switch rejected";
+        }
+    }
+
+    ReplyCode = 950;
+    return "no parameter found";
+}
+
+cString cPluginJonglisto::cmdREPC(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+
+    if (rest && *rest) {
+        // create list of channels
+        cVector<cChannel*> newChannels;
+
+        char *chstr;
+
+        while ((chstr = strtok_r(rest, "~", &rest)) != NULL) {
+            cChannel c;
+            if (!c.Parse(chstr)) {
+                // invalid channel -> reject everything
+                for (int i = 0; i < newChannels.Size(); ++i) {
+                    delete newChannels.At(i);
+                }
+
+                ReplyCode = 950;
+                cString res = cString::sprintf("found invalid channel '%s'. Aborting...", chstr);
+                return res;
+            }
+
+            cChannel *channel = new cChannel;
+            *channel = c;
+
+            newChannels.Append(channel);
+        }
+
+        // LOCK_TIMERS_READ;
+        LOCK_CHANNELS_WRITE;
+        Channels->SetExplicitModify();
+
+        // Delete all existing channels
+        cChannel *ch;
+        while ((ch = Channels->Last()) != NULL) {
+            Channels->Del(ch);
+        }
+
+        // insert new channels
+        for (int i = 0; i < newChannels.Size(); ++i) {
+            Channels->Add(newChannels.At(i));
+        }
+
+        Channels->ReNumber();
+        Channels->SetModifiedByUser();
+        Channels->SetModified();
+
+        return "channel list updated";
+    } else {
+        ReplyCode = 950;
+        return "Parameter channel list must exists.";
+    }
+}
+
+cString cPluginJonglisto::cmdLSTT(const char *Command, const char *Option, int &ReplyCode) {
+    std::stringstream timerOut;
+    LOCK_TIMERS_READ;
+
+    bool showRemote = Setup.SVDRPPeering;
+
+    if (Timers->Count() > 0) {
+        for (const cTimer *Timer = Timers->First(); Timer; Timer = Timers->Next(Timer)) {
+            if ((Timer->Remote() && showRemote) || !Timer->Remote()) {
+                timerOut << Timer->Id() << " " << *Timer->ToText(true) << "<remote>" << (Timer->Remote() ? "1" : "0") << "</remote>\n";
+            }
+        }
+
+        ReplyCode = 250;
+        return timerOut.str().c_str();
+    } else {
+        ReplyCode = 550;
+        return "No timers defined";
+    }
+}
+
+cString cPluginJonglisto::cmdUPDT(const char *Command, const char *Option, int &ReplyCode) {
+    cString message;
+
+    if (*Option) {
+        cTimer *Timer = new cTimer;
+        if (Timer->Parse(Option)) {
+            LOCK_TIMERS_WRITE;
+
+            bool isNewTimer = true;
+
+            cTimer *oldTimer = GetTimer(Timer);
+
+            if (oldTimer != NULL) {
+                oldTimer->Parse(Option);
+                delete Timer;
+                Timer = oldTimer;
+
+                isNewTimer = false;
+            } else {
+                Timers->Add(Timer);
+
+                if (Setup.SVDRPPeering && *Setup.SVDRPDefaultHost) {
+                    Timer->SetRemote(Setup.SVDRPDefaultHost);
+                }
+            }
+
+            cString ErrorMessage;
+            if (!HandleRemoteTimerModifications(Timer, isNewTimer ? NULL : Timer, &ErrorMessage)) {
+                ReplyCode = 952;
+                message = cString::sprintf("Error: %s", *ErrorMessage);
+            } else {
+                ReplyCode = 250;
+                message = cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
+            }
+        } else {
+            ReplyCode = 501;
+            message = "Error in timer settings";
+        }
+
+        delete Timer;
+        return message;
+    } else {
+        ReplyCode = 501;
+        return "Missing timer settings";
+    }
+}
+
+cString cPluginJonglisto::cmdDELT(const char *Command, const char *Option, int &ReplyCode) {
+    if (*Option) {
+        LOCK_TIMERS_WRITE;
+
+        cTimer *Timer = GetTimer(strtol(Option, NULL, 10));
+
+        if (Timer->Remote()) {
+            cString ErrorMessage;
+            if (!HandleRemoteTimerModifications(NULL, Timer, &ErrorMessage)) {
+                ReplyCode = 952;
+                return cString::sprintf("Error: %s", *ErrorMessage);
+            } else {
                 ReplyCode = 250;
                 return cString::sprintf("Timer \"%s\" deleted", Option);
             }
         } else {
-            ReplyCode = 950;
-            return "Missing timer id";
-        }
-    }
+            Timers->SetExplicitModify();
+            if (Timer->Recording()) {
+                Timer->Skip();
+            }
+            Timers->Del(Timer);
+            Timers->SetModified();
 
-    return NULL;
+            ReplyCode = 250;
+            return cString::sprintf("Timer \"%s\" deleted", Option);
+        }
+    } else {
+        ReplyCode = 950;
+        return "Missing timer id";
+    }
 }
+
+cString cPluginJonglisto::cmdMOVR(const char *Command, const char *Option, int &ReplyCode) {
+    char *rest = const_cast<char*>(Option);
+    char *cmd;
+    int countErrors = 0;
+    int countOk = 0;
+
+    if (rest && *rest) {
+        if (*rest != '/') {
+            // command start is wrong
+            ReplyCode = 950;
+            return "parameter has wrong format";
+        }
+
+        rest++;
+
+        LOCK_RECORDINGS_WRITE;
+        Recordings->SetExplicitModify();
+
+        while ((cmd = strtok_r(rest, "/", &rest)) != NULL) {
+            char *tail;
+            long int id = strtol(cmd, &tail, 10);
+            if (tail && tail != cmd) {
+                tail = skipspace(tail);
+                if (tail && tail != cmd) {
+                    if (cRecording *Recording = Recordings->GetById(id)) {
+                        if (Recording->IsInUse()) {
+                            countErrors++;
+                        } else {
+                            if (*tail) {
+                                cString oldName = Recording->Name();
+                                if ((Recording = Recordings->GetByName(Recording->FileName())) != NULL && Recording->ChangeName(tail)) {
+                                    countOk++;
+                                } else {
+                                    countErrors++;
+                                }
+                            } else {
+                                countErrors++;
+                            }
+                        }
+                    } else {
+                        countErrors++;
+                    }
+                }
+            }
+        }
+
+        Recordings->SetModified();
+        Recordings->TouchUpdate();
+
+        ReplyCode = 900;
+        return cString::sprintf("Recordings renamed (ok/error): %d/%d", countOk, countErrors);
+    } else {
+        ReplyCode = 950;
+        return "no parameter found";
+    }
+}
+
+/*
+        LOCK_RECORDINGS_WRITE;
+        Recordings->SetExplicitModify();
+        if (cRecording *Recording = Recordings->GetById(strtol(num, NULL, 10))) {
+           if (int RecordingInUse = Recording->IsInUse())
+              Reply(550, "%s", *RecordingInUseMessage(RecordingInUse, Option, Recording));
+           else {
+              if (c)
+                 option = skipspace(++option);
+              if (*option) {
+                 cString oldName = Recording->Name();
+                 if ((Recording = Recordings->GetByName(Recording->FileName())) != NULL && Recording->ChangeName(option)) {
+                    Recordings->SetModified();
+                    Recordings->TouchUpdate();
+                    Reply(250, "Recording \"%s\" moved to \"%s\"", *oldName, Recording->Name());
+                    }
+                 else
+                    Reply(554, "Error while moving recording \"%s\" to \"%s\"!", *oldName, option);
+                 }
+              else
+                 Reply(501, "Missing new recording name");
+              }
+           }
+        else
+           Reply(550, "Recording \"%s\" not found", num);
+        }
+ */
+
 
 cTimer *cPluginJonglisto::GetTimer(const cTimer *Timer) {
     bool showRemote = Setup.SVDRPPeering;

@@ -26,6 +26,19 @@ private:
     cTimer* GetTimer(const cTimer *Timer);
     cTimer* GetTimer(long int id);
 
+    cString cmdEINF(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdRINF(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdNEWT(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdNERT(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdLSDR(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdUNDR(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdSWIT(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdREPC(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdLSTT(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdUPDT(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdDELT(const char *Command, const char *Option, int &ReplyCode);
+    cString cmdMOVR(const char *Command, const char *Option, int &ReplyCode);
+
 public:
     cPluginJonglisto(void);
     virtual ~cPluginJonglisto();
