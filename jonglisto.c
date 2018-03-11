@@ -777,8 +777,8 @@ cString cPluginJonglisto::searchAndPrintEvent(int &ReplyCode, ScraperGetEventTyp
 
             p = cPluginManager::CallFirstService("GetSeries", (void*)&series);
             if (p) {
-                std::stringstream seriesOut = printSeries(series);
-                return seriesOut.str().c_str();
+                std::string seriesOut = printSeries(series);
+                return seriesOut.c_str();
             } else {
                 ReplyCode = 951;
                 return "event not found";
@@ -789,8 +789,8 @@ cString cPluginJonglisto::searchAndPrintEvent(int &ReplyCode, ScraperGetEventTyp
 
             p = cPluginManager::CallFirstService("GetMovie", (void*)&movie);
             if (p) {
-                std::stringstream movieOut = printMovie(movie);
-                return movieOut.str().c_str();
+                std::string movieOut = printMovie(movie);
+                return movieOut.c_str();
             } else {
                 ReplyCode = 951;
                 return "event not found";
@@ -805,7 +805,7 @@ cString cPluginJonglisto::searchAndPrintEvent(int &ReplyCode, ScraperGetEventTyp
     }
 }
 
-std::stringstream cPluginJonglisto::printSeries(cSeries series) {
+std::string cPluginJonglisto::printSeries(cSeries series) {
     std::stringstream seriesOut;
     seriesOut << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>"
             << "<scraper><series>" << "<id>" << series.seriesId << "</id>"
@@ -846,10 +846,10 @@ std::stringstream cPluginJonglisto::printSeries(cSeries series) {
             << series.episode.episodeImage.path << "]]></episode>";
 
     seriesOut << "</series></scraper>";
-    return seriesOut;
+    return seriesOut.str();
 }
 
-std::stringstream cPluginJonglisto::printMovie(cMovie movie) {
+std::string cPluginJonglisto::printMovie(cMovie movie) {
     std::stringstream movieOut;
     movieOut << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\" ?>"
             << "<scraper><movie>" << "<id>" << movie.movieId << "</id>"
@@ -884,7 +884,7 @@ std::stringstream cPluginJonglisto::printMovie(cMovie movie) {
     movieOut << "<poster height=\"" << movie.poster.height << "\" width=\"" << movie.poster.width << "\"><![CDATA[" << movie.poster.path << "]]></poster>";
 
     movieOut << "</movie></scraper>";
-    return movieOut;
+    return movieOut.str();
 }
 
 

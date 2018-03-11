@@ -19,8 +19,8 @@ private:
     unsigned int svdrpPort = 6419;
     cString jonglistoHost;
 
-    std::stringstream printSeries(cSeries series);
-    std::stringstream printMovie(cMovie movie);
+    std::string printSeries(cSeries series);
+    std::string printMovie(cMovie movie);
     cString searchAndPrintEvent(int &ReplyCode, ScraperGetEventType *Data = NULL);
 
     cTimer* GetTimer(const cTimer *Timer);
