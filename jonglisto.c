@@ -557,11 +557,10 @@ cString cPluginJonglisto::cmdLSTT(const char *Command, const char *Option, int &
 cString cPluginJonglisto::cmdUPDT(const char *Command, const char *Option, int &ReplyCode) {
     cString message;
 
+    LOCK_TIMERS_WRITE;
     if (*Option) {
         cTimer *Timer = new cTimer;
         if (Timer->Parse(Option)) {
-            LOCK_TIMERS_WRITE;
-
             bool isNewTimer = true;
 
             cTimer *oldTimer = GetTimer(Timer);
@@ -589,11 +588,11 @@ cString cPluginJonglisto::cmdUPDT(const char *Command, const char *Option, int &
                 message = cString::sprintf("%d %s <%s>", Timer->Id(), *Timer->ToText(true), *ErrorMessage);
             }
         } else {
+            delete Timer;
             ReplyCode = 501;
             message = "Error in timer settings";
         }
 
-        delete Timer;
         return message;
     } else {
         ReplyCode = 501;
