@@ -5,7 +5,7 @@
 #ifndef JONGLISTO_H_
 #define JONGLISTO_H_
 
-static const char *VERSION = "0.1.1";
+static const char *VERSION = "0.1.2";
 static const char *DESCRIPTION = "Tool plugin for jonglisto-ng";
 static const char *MAINMENUENTRY = "Jonglisto";
 
