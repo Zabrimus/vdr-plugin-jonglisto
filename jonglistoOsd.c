@@ -270,6 +270,8 @@ eOSState cJonglistoEpgListMenu::ProcessKey(eKeys key) {
 }
 
 void cJonglistoEpgListMenu::Setup() {
+    char *buffer = NULL;
+
     Clear();
 
     LOCK_CHANNELS_READ;
@@ -292,8 +294,11 @@ void cJonglistoEpgListMenu::Setup() {
 
     LOCK_SCHEDULES_READ;
 
-    currentTimeItem = new cOsdItem(*cString::sprintf("%s: %s", tr("Selected time"), *DayDateTime(currentTime)));
+    asprintf(&buffer, "%s: %s", tr("Selected time"), *DayDateTime(currentTime));
+    currentTimeItem = new cOsdItem(buffer);
     currentTimeItem->SetSelectable(false);
+    free(buffer);
+
     cOsdMenu::Add(currentTimeItem);
     cOsdMenu::Add(new cMenuEditStraItem(tr("Time"), &preselectedTime, preselectedTimeSize, preselectedTimeValues));
 
@@ -305,11 +310,13 @@ void cJonglistoEpgListMenu::Setup() {
             const cEvent *event = GetEvent(ch);
 
             if (event != NULL) {
-                cString itemStr = cString::sprintf("%s\t%s\t%s\t%s", ch->Name(), *(event->GetTimeString()), *(event->GetEndTimeString()), event->Title());
-                cOsdMenu::Add(new cOsdItem(itemStr));
+                asprintf(&buffer, "%s\t%s\t%s\t%s", ch->Name(), *(event->GetTimeString()), *(event->GetEndTimeString()), event->Title());
+                cOsdMenu::Add(new cOsdItem(buffer));
+                free(buffer);
             } else {
-                cString itemStr = cString::sprintf("%s\t\t\t%s", ch->Name(), "<event is not available>");
-                cOsdMenu::Add(new cOsdItem(itemStr));
+                asprintf(&buffer, "%s\t\t\t%s", ch->Name(), "<event is not available>");
+                cOsdMenu::Add(new cOsdItem(buffer));
+                free(buffer);
             }
         } else {
             esyslog("jonglisto: channel %s not found.", channels.At(i));
