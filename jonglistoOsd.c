@@ -298,6 +298,7 @@ void cJonglistoEpgListMenu::Setup() {
     currentTimeItem = new cOsdItem(buffer);
     currentTimeItem->SetSelectable(false);
     free(buffer);
+    buffer = NULL;
 
     cOsdMenu::Add(currentTimeItem);
     cOsdMenu::Add(new cMenuEditStraItem(tr("Time"), &preselectedTime, preselectedTimeSize, preselectedTimeValues));
@@ -313,10 +314,12 @@ void cJonglistoEpgListMenu::Setup() {
                 asprintf(&buffer, "%s\t%s\t%s\t%s", ch->Name(), *(event->GetTimeString()), *(event->GetEndTimeString()), event->Title());
                 cOsdMenu::Add(new cOsdItem(buffer));
                 free(buffer);
+                buffer = NULL;
             } else {
                 asprintf(&buffer, "%s\t\t\t%s", ch->Name(), "<event is not available>");
                 cOsdMenu::Add(new cOsdItem(buffer));
                 free(buffer);
+                buffer = NULL;
             }
         } else {
             esyslog("jonglisto: channel %s not found.", channels.At(i));
