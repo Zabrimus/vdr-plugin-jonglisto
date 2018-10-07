@@ -15,9 +15,7 @@ static const char *MAINMENUENTRY = "Jonglisto";
 
 class cPluginJonglisto: public cPlugin {
 private:
-    unsigned int jonglistoPort = 8080;
     unsigned int svdrpPort = 6419;
-    cString jonglistoHost;
 
     std::string printSeries(cSeries series);
     std::string printMovie(cMovie movie);

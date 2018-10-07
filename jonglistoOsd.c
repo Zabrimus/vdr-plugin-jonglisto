@@ -9,56 +9,25 @@
 #include <vdr/timers.h>
 #include <vdr/menu.h>
 #include <vdr/tools.h>
+#include <vdr/svdrp.h>
 
 #include "jonglistoOsd.h"
-#include "svdrp.h"
+
 
 static unsigned int svdrpPort;
-static unsigned int jonglistoPort;
-static cString jonglistoHost;
 
 static cStringList favourites;
 static cStringList channels;
 static cStringList alarmIds;
 static cStringList vdrNames;
 
-static cSVDRPClient *svdrpClient;
-
-bool Ping() {
-    cStringList response;
-
-    if (!svdrpClient) {
-        svdrpClient = new cSVDRPClient(jonglistoHost, jonglistoPort, "jonglisto-ng", 5000);
-
-        // read greeting
-        svdrpClient->Process(&response);
-    }
-
-    if (!svdrpClient->Execute("PING", &response)) {
-        // try to reconnect
-        delete svdrpClient;
-        svdrpClient = new cSVDRPClient(jonglistoHost, jonglistoPort, "jonglisto-ng", 5000);
-
-        // read greeting
-        svdrpClient->Process(&response);
-
-        return svdrpClient->Execute("PING", &response);
-    } else {
-        return true;
-    }
-
-    return false;
-}
+static cStringList jonglistoResponse;
 
 //***************************************************************************
 // main menu
 //***************************************************************************
-cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, cString host, unsigned int port, unsigned int sPort) : cOsdMenu(title) {
-    jonglistoPort = port;
-    jonglistoHost = host;
+cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, unsigned int sPort) : cOsdMenu(title) {
     svdrpPort = sPort;
-
-    Ping();
 
     Clear();
 
@@ -107,18 +76,14 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
 cJonglistoFavouriteMenu::cJonglistoFavouriteMenu(const char* title) : cOsdMenu(title) {
     Clear();
 
-    if (Ping()) {
-        cStringList response;
+    if (ExecSVDRPCommand("jonglisto", *cString::sprintf("FAVL %d", svdrpPort), &jonglistoResponse)) {
+        if (favourites.Size() > 0) {
+            favourites.Clear();
+        }
 
-        if (svdrpClient->Execute(*cString::sprintf("FAVL %d", svdrpPort), &response)) {
-            if (favourites.Size() > 0) {
-                favourites.Clear();
-            }
-
-            for (int i = 0; i < response.Size(); ++i) {
-                if (startswith(response.At(i), "900")) {
-                    favourites.Append(strdup(response.At(i)));
-                }
+        for (int i = 0; i < jonglistoResponse.Size(); ++i) {
+            if (startswith(jonglistoResponse.At(i), "900")) {
+                favourites.Append(strdup(jonglistoResponse.At(i)));
             }
         }
     }
@@ -169,15 +134,11 @@ cJonglistoEpgListMenu::cJonglistoEpgListMenu(const char* title) : cOsdMenu(title
     preselectedTimeValues[0] = strdup(tr("Now"));
     preselectedTimeSize = 1;
 
-    if (Ping()) {
-        cStringList response;
-
-        if (svdrpClient->Execute("EPGT", &response)) {
-            int rsize = std::max(0, std::min(response.Size(), 10));
-            for (int i = 0; i < rsize; ++i) {
-                preselectedTimeValues[i+1] = strdup(response[i] + 4);
-                preselectedTimeSize++;
-            }
+    if (ExecSVDRPCommand("jonglisto", "EPGT", &jonglistoResponse)) {
+        int rsize = std::max(0, std::min(jonglistoResponse.Size(), 10));
+        for (int i = 0; i < rsize; ++i) {
+            preselectedTimeValues[i+1] = strdup(jonglistoResponse[i] + 4);
+            preselectedTimeSize++;
         }
     }
 
@@ -276,17 +237,13 @@ void cJonglistoEpgListMenu::Setup() {
 
     LOCK_CHANNELS_READ;
 
-    if (Ping()) {
-        cStringList response;
+    if (ExecSVDRPCommand("jonglisto", *cString::sprintf("FAVC %s", Title()), &jonglistoResponse)) {
+        if (channels.Size() > 0) {
+            channels.Clear();
+        }
 
-        if (svdrpClient->Execute(*cString::sprintf("FAVC %s", Title()), &response)) {
-            if (channels.Size() > 0) {
-                channels.Clear();
-            }
-
-            for (int i = 0; i < response.Size(); ++i) {
-                channels.Append(strdup(response.At(i) + 4));
-            }
+        for (int i = 0; i < jonglistoResponse.Size(); ++i) {
+            channels.Append(strdup(jonglistoResponse.At(i) + 4));
         }
     }
 
@@ -378,28 +335,23 @@ eOSState cJonglistoEpgDetailMenu::ProcessKey(eKeys key) {
         }
 
         case kGreen: {
-            if (Ping()) {
-                cStringList response;
+            cString command = cString::sprintf("ALRM %u %lu %s %s", svdrpPort, event->StartTime() - 2 * 60, *event->ChannelID().ToString(), event->Title());
 
-                cString command = cString::sprintf("ALRM %u %lu %s %s", svdrpPort, event->StartTime() - 2 * 60, *event->ChannelID().ToString(), event->Title());
-
-                if (svdrpClient->Execute(command, &response)) {
-                    if (response.Size() > 0) {
-                        if (startswith(response.At(0), "900")) {
-                            Skins.Message(mtInfo, tr("Alarm timer created"));
-                            return osContinue;
-                        } else {
-                            Skins.Message(mtError, tr("Alarm timer not created"));
-                        }
+            if (ExecSVDRPCommand("jonglisto", *command, &jonglistoResponse)) {
+                if (jonglistoResponse.Size() > 0) {
+                    if (startswith(jonglistoResponse.At(0), "900")) {
+                        Skins.Message(mtInfo, tr("Alarm timer created"));
+                        return osContinue;
                     } else {
-                        Skins.Message(mtError, tr("No response reveived"));
+                        Skins.Message(mtError, tr("Alarm timer not created"));
                     }
                 } else {
-                    Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
+                    Skins.Message(mtError, tr("No response reveived"));
                 }
             } else {
                 Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
             }
+
             break;
         }
 
@@ -473,16 +425,11 @@ eOSState cJonglistoAlarmMenu::ProcessKey(eKeys key) {
             }
 
             case kRed: {
-                if (!Ping()) {
-                    Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
-                    return osContinue;
-                }
-
                 cStringList response;
                 cString cmd = cString::sprintf("ALRC toggle %s", alarmIds.At(Current()));
-                if (svdrpClient->Execute(cmd, &response)) {
-                    if (response.Size() > 0) {
-                        if (startswith(response.At(0), "900")) {
+                if (ExecSVDRPCommand("jonglisto", *cmd, &jonglistoResponse)) {
+                    if (jonglistoResponse.Size() > 0) {
+                        if (startswith(jonglistoResponse.At(0), "900")) {
                             Setup();
                             return osContinue;
                         } else {
@@ -502,16 +449,11 @@ eOSState cJonglistoAlarmMenu::ProcessKey(eKeys key) {
             }
 
             case kYellow: {
-                if (!Ping()) {
-                    Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
-                    return osContinue;
-                }
-
                 cStringList response;
                 cString cmd = cString::sprintf("ALRC delete %s", alarmIds.At(Current()));
-                if (svdrpClient->Execute(cmd, &response)) {
-                    if (response.Size() > 0) {
-                        if (startswith(response.At(0), "900")) {
+                if (ExecSVDRPCommand("jonglisto", *cmd, &jonglistoResponse)) {
+                    if (jonglistoResponse.Size() > 0) {
+                        if (startswith(jonglistoResponse.At(0), "900")) {
                             Setup();
                         } else {
                             Skins.Message(mtError, tr("deletion failed"));
@@ -549,61 +491,54 @@ void cJonglistoAlarmMenu::Setup() {
 
     SetCols(3, 15, 22);
 
-    if (Ping()) {
-        cStringList response;
+    if (ExecSVDRPCommand("jonglisto", *cString::sprintf("ALRL %u", svdrpPort), &jonglistoResponse)) {
+        if (jonglistoResponse.Size() > 0) {
+            LOCK_CHANNELS_READ;
 
-        if (svdrpClient->Execute(*cString::sprintf("ALRL %u", svdrpPort), &response)) {
-            if (response.Size() > 0) {
-                LOCK_CHANNELS_READ;
+            if (alarmIds.Size() > 0) {
+                alarmIds.Clear();
+            }
 
-                if (alarmIds.Size() > 0) {
-                    alarmIds.Clear();
-                }
+            for (int i = 0; i < jonglistoResponse.Size(); i++) {
+                if (startswith(jonglistoResponse.At(i), "900") && strlen(jonglistoResponse.At(i)) > 5) {
+                    rest = jonglistoResponse.At(i) + 4;
 
-                for (int i = 0; i < response.Size(); i++) {
-                    if (startswith(response.At(i), "900") && strlen(response.At(i)) > 5) {
-                        rest = response.At(i) + 4;
+                    id = strtok_r(rest, " ", &rest);
+                    active = strtok_r(rest, " ", &rest);
+                    nextSchedule = strtok_r(rest, " ", &rest);
+                    channelId = strtok_r(rest, " ", &rest);
+                    alarmTitle = rest;
 
-                        id = strtok_r(rest, " ", &rest);
-                        active = strtok_r(rest, " ", &rest);
-                        nextSchedule = strtok_r(rest, " ", &rest);
-                        channelId = strtok_r(rest, " ", &rest);
-                        alarmTitle = rest;
-
-                        if (id == NULL || active == NULL || nextSchedule == NULL || channelId == NULL || alarmTitle == NULL) {
-                            // wrong answer
-                            // ignore
-                        } else {
-                            const tChannelID chid = tChannelID::FromString(channelId);
-                            const cChannel *ch = Channels->GetByChannelID(chid);
-
-                            alarmIds.Append(strdup(id));
-
-                            cString itemStr = cString::sprintf("%s\t%s\t%s\t%s",
-                                    active[0] == '1' ? "O" : "",
-                                    nextSchedule[0] == '0' ? tr("never") : *DayDateTime(atol(nextSchedule)),
-                                    ch->Name(),
-                                    alarmTitle);
-
-                            cOsdMenu::Add(new cOsdItem(itemStr));
-                        }
-
-                        SetHelp(tr("on/off"), 0, tr("Delete"), 0);
+                    if (id == NULL || active == NULL || nextSchedule == NULL || channelId == NULL || alarmTitle == NULL) {
+                        // wrong answer
+                        // ignore
                     } else {
-                        Skins.Message(mtError, tr("No alarms defined"));
-                        return;
+                        const tChannelID chid = tChannelID::FromString(channelId);
+                        const cChannel *ch = Channels->GetByChannelID(chid);
+
+                        alarmIds.Append(strdup(id));
+
+                        cString itemStr = cString::sprintf("%s\t%s\t%s\t%s",
+                                active[0] == '1' ? "O" : "",
+                                nextSchedule[0] == '0' ? tr("never") : *DayDateTime(atol(nextSchedule)),
+                                ch->Name(),
+                                alarmTitle);
+
+                        cOsdMenu::Add(new cOsdItem(itemStr));
                     }
+
+                    SetHelp(tr("on/off"), 0, tr("Delete"), 0);
+                } else {
+                    Skins.Message(mtError, tr("No alarms defined"));
+                    return;
                 }
-            } else {
-                Skins.Message(mtError, tr("No alarms defined"));
-                return;
             }
         } else {
-            Skins.Message(mtError, tr("Could not get alarms"));
+            Skins.Message(mtError, tr("No alarms defined"));
             return;
         }
     } else {
-        Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
+        Skins.Message(mtError, tr("Could not get alarms"));
         return;
     }
 
@@ -640,17 +575,15 @@ eOSState cJonglistoVdrMenu::ProcessKey(eKeys key) {
             case kRed: {
                 if (Current() >= 0) {
                     // check VDR
-                    cStringList response;
-
                     cString req = cString::sprintf("VDRP %s", vdrNames.At(Current()));
 
-                    if (svdrpClient->Execute(req, &response)) {
-                        if (response.Size() >= 1) {
-                            if (startswith(response.At(0), "900")) {
+                    if (ExecSVDRPCommand("jonglisto", *req, &jonglistoResponse)) {
+                        if (jonglistoResponse.Size() >= 1) {
+                            if (startswith(jonglistoResponse.At(0), "900")) {
                                 return AddSubMenu(new cJonglistoVdrDetailMenu(vdrNames.At(Current())));
-                            } else if (startswith(response.At(0), "901")) {
+                            } else if (startswith(jonglistoResponse.At(0), "901")) {
                                 Skins.Message(mtError, tr("System is alive, VDR is down"));
-                            } else if (startswith(response.At(0), "902")) {
+                            } else if (startswith(jonglistoResponse.At(0), "902")) {
                                 Skins.Message(mtError, tr("System is down"));
                             } else {
                                 Skins.Message(mtError, tr("Unknown VDR"));
@@ -668,13 +601,11 @@ eOSState cJonglistoVdrMenu::ProcessKey(eKeys key) {
             case kGreen: {
                 // wake on lan
                 if (Current() >= 0) {
-                    cStringList response;
-
                     cString req = cString::sprintf("VDRW %s", vdrNames.At(Current()));
 
-                    if (svdrpClient->Execute(req, &response)) {
-                        if (response.Size() >= 1) {
-                            if (startswith(response.At(0), "900")) {
+                    if (ExecSVDRPCommand("jonglisto", *req, &jonglistoResponse)) {
+                        if (jonglistoResponse.Size() >= 1) {
+                            if (startswith(jonglistoResponse.At(0), "900")) {
                                 Skins.Message(mtError, tr("Wake on lan packet sent"));
                             } else {
                                 Skins.Message(mtError, tr("MAC is not configured"));
@@ -716,49 +647,42 @@ void cJonglistoVdrMenu::Setup() {
 
     SetCols(15, 22);
 
-    if (Ping()) {
-        cStringList response;
+    if (ExecSVDRPCommand("jonglisto", "VDRL", &jonglistoResponse)) {
+        if (jonglistoResponse.Size() > 0) {
+            if (vdrNames.Size() > 0) {
+                vdrNames.Clear();
+            }
 
-        if (svdrpClient->Execute("VDRL", &response)) {
-            if (response.Size() > 0) {
-                if (vdrNames.Size() > 0) {
-                    vdrNames.Clear();
-                }
+            for (int i = 0; i < jonglistoResponse.Size(); i++) {
+                if (startswith(jonglistoResponse.At(i), "900") && strlen(jonglistoResponse.At(i)) > 5) {
+                    rest = jonglistoResponse.At(i) + 4;
 
-                for (int i = 0; i < response.Size(); i++) {
-                    if (startswith(response.At(i), "900") && strlen(response.At(i)) > 5) {
-                        rest = response.At(i) + 4;
+                    name  = strtok_r(rest, " ", &rest);
+                    host = strtok_r(rest, " ", &rest);
+                    port = rest;
 
-                        name  = strtok_r(rest, " ", &rest);
-                        host = strtok_r(rest, " ", &rest);
-                        port = rest;
-
-                        if (name == NULL || host == NULL || port == NULL) {
-                            // wrong answer
-                            // ignore
-                        } else {
-                            strreplace(name, '|', ' ');
-                            vdrNames.Append(strdup(name));
-                            cString itemStr = cString::sprintf("%s\t%s:%s", name, host, port);
-                            cOsdMenu::Add(new cOsdItem(itemStr));
-                        }
-
-                        SetHelp(tr("Details"), tr("wake on lan"), 0, 0);
+                    if (name == NULL || host == NULL || port == NULL) {
+                        // wrong answer
+                        // ignore
                     } else {
-                        Skins.Message(mtError, tr("No VDR defined"));
-                        return;
+                        strreplace(name, '|', ' ');
+                        vdrNames.Append(strdup(name));
+                        cString itemStr = cString::sprintf("%s\t%s:%s", name, host, port);
+                        cOsdMenu::Add(new cOsdItem(itemStr));
                     }
+
+                    SetHelp(tr("Details"), tr("wake on lan"), 0, 0);
+                } else {
+                    Skins.Message(mtError, tr("No VDR defined"));
+                    return;
                 }
-            } else {
-                Skins.Message(mtError, tr("No VDR defined"));
-                return;
             }
         } else {
-            Skins.Message(mtError, tr("Could not get VDRs"));
+            Skins.Message(mtError, tr("No VDR defined"));
             return;
         }
     } else {
-        Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
+        Skins.Message(mtError, tr("Could not get VDRs"));
         return;
     }
 
@@ -821,60 +745,53 @@ void cJonglistoVdrDetailMenu::Setup() {
 
     SetCols(15, 18);
 
-    if (Ping()) {
-        cStringList response;
+    cString req = cString::sprintf("VDRD %s", Title());
 
-        cString req = cString::sprintf("VDRD %s", Title());
+    if (ExecSVDRPCommand("jonglisto", *req, &jonglistoResponse)) {
+        if (jonglistoResponse.Size() > 0) {
+            for (int i = 0; i < jonglistoResponse.Size(); i++) {
+                if (startswith(jonglistoResponse.At(i), "900") && strlen(jonglistoResponse.At(i)) > 5) {
+                    rest = jonglistoResponse.At(i) + 4;
+                    if (i == 0) {
+                        // first line
+                        version = strtok_r(rest, " ", &rest);
+                        dfree = strtok_r(rest, " ", &rest);
+                        dtotal = strtok_r(rest, " ", &rest);
+                        dperc = rest;
 
-        if (svdrpClient->Execute(req, &response)) {
-            if (response.Size() > 0) {
-                for (int i = 0; i < response.Size(); i++) {
-                    if (startswith(response.At(i), "900") && strlen(response.At(i)) > 5) {
-                        rest = response.At(i) + 4;
-                        if (i == 0) {
-                            // first line
-                            version = strtok_r(rest, " ", &rest);
-                            dfree = strtok_r(rest, " ", &rest);
-                            dtotal = strtok_r(rest, " ", &rest);
-                            dperc = rest;
-
-                            if (version == NULL || dfree == NULL || dtotal == NULL || dperc == NULL) {
-                                // wrong answer
-                                // ignore
-                            } else {
-                                strreplace(dfree, '|', ' ');
-                                strreplace(dtotal, '|', ' ');
-                                cString itemStr = cString::sprintf("%s\t%s\t%s %s/%s  %u%%", tr("VDR version"), version, tr("HD: "), dfree, dtotal, atoi(dperc));
-                                cOsdMenu::Add(new cOsdItem(itemStr));
-                            }
+                        if (version == NULL || dfree == NULL || dtotal == NULL || dperc == NULL) {
+                            // wrong answer
+                            // ignore
                         } else {
-                            name = strtok_r(rest, " ", &rest);
-                            version = strtok_r(rest, " ", &rest);
-                            desc  = rest;
-
-                            if (name == NULL || version == NULL) {
-                                // wrong answer
-                                // ignore
-                            } else {
-                                cString itemStr = cString::sprintf("%s\t%s\t%s", name, version, desc != NULL ? desc : "");
-                                cOsdMenu::Add(new cOsdItem(itemStr));
-                            }
+                            strreplace(dfree, '|', ' ');
+                            strreplace(dtotal, '|', ' ');
+                            cString itemStr = cString::sprintf("%s\t%s\t%s %s/%s  %u%%", tr("VDR version"), version, tr("HD: "), dfree, dtotal, atoi(dperc));
+                            cOsdMenu::Add(new cOsdItem(itemStr));
                         }
                     } else {
-                        Skins.Message(mtError, tr("No VDR defined"));
-                        return;
+                        name = strtok_r(rest, " ", &rest);
+                        version = strtok_r(rest, " ", &rest);
+                        desc  = rest;
+
+                        if (name == NULL || version == NULL) {
+                            // wrong answer
+                            // ignore
+                        } else {
+                            cString itemStr = cString::sprintf("%s\t%s\t%s", name, version, desc != NULL ? desc : "");
+                            cOsdMenu::Add(new cOsdItem(itemStr));
+                        }
                     }
+                } else {
+                    Skins.Message(mtError, tr("No VDR defined"));
+                    return;
                 }
-            } else {
-                Skins.Message(mtError, tr("No VDR defined"));
-                return;
             }
         } else {
-            Skins.Message(mtError, tr("Could not get VDRs"));
+            Skins.Message(mtError, tr("No VDR defined"));
             return;
         }
     } else {
-        Skins.Message(mtError, tr("Connection to jonglisto-ng failed"));
+        Skins.Message(mtError, tr("Could not get VDRs"));
         return;
     }
 

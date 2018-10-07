@@ -28,6 +28,11 @@
 
 #include "services/scraper2vdr.h"
 
+#if defined(APIVERSNUM) && APIVERSNUM < 20400
+#error "VDR-2.4.0 API version or greater is required!"
+#error "For VDR < 2.4.0 you could use the branch vdr-2.3"
+#endif
+
 cPluginJonglisto::cPluginJonglisto(void) {
     // Initialize any member variables here.
     // DON'T DO ANYTHING ELSE THAT MAY HAVE SIDE EFFECTS, REQUIRE GLOBAL
@@ -40,29 +45,19 @@ cPluginJonglisto::~cPluginJonglisto() {
 
 const char *cPluginJonglisto::CommandLineHelp(void) {
     // Return a string that describes all known command line options.
-    return "  -h <host>, --host=<host>        set the hostname or ip of the jonglisto-ng server\n"
-           "  -p <port>, --port=<port>        set the port of the jonglisto-ng server\n"
-           "  -P <port>  --localport=<port>   sets the local SVDRP port\n";
+    return "  -P <port>  --localport=<port>   sets the local SVDRP port\n";
 }
 
 bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
     // Implement command line argument processing here if applicable.
     static const struct option long_options[] = {
-        { "host",      required_argument, NULL, 'h' },
-        { "port",      required_argument, NULL, 'p' },
         { "localport", required_argument, NULL, 'P' },
         {0, 0, 0, 0}
         };
 
     int c;
-    while ((c = getopt_long(argc, argv, "h:p:P:", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "P:", long_options, NULL)) != -1) {
         switch (c) {
-          case 'h':
-               jonglistoHost = optarg;
-               break;
-          case 'p':
-               jonglistoPort = atoi(optarg);
-               break;
           case 'P':
                svdrpPort = atoi(optarg);
                break;
@@ -109,14 +104,10 @@ time_t cPluginJonglisto::WakeupTime(void) {
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
     // Perform the action when selected from the main VDR menu.
-    return new cJonglistoPluginMenu("Jonglisto", jonglistoHost, jonglistoPort, svdrpPort);
+    return new cJonglistoPluginMenu("Jonglisto", svdrpPort);
 }
 
 const char *cPluginJonglisto::MainMenuEntry(void) {
-    if (*jonglistoHost == NULL || strlen(jonglistoHost) == 0) {
-        return NULL;
-    }
-
     return MAINMENUENTRY;
 }
 
