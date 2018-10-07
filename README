@@ -69,5 +69,4 @@ MOVR [/<id> <new name>[/<id> <new name>]...]
 
 
 Parameters:
--h <host>, --host=<host>        set the hostname or ip of the jonglisto-ng server
--p <port>, --port=<port>        set the port of the jonglisto-ng server
+-P <port>, --localport=<port>   SVDRP port of the local VDR (only necessary if not 6419)
