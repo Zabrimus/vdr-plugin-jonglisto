@@ -70,3 +70,8 @@ MOVR [/<id> <new name>[/<id> <new name>]...]
 
 Parameters:
 -P <port>, --localport=<port>   SVDRP port of the local VDR (only necessary if not 6419)
+-D <name>, --servername=<name>  Name which is used by the discovery. Jonglisto-NG must be
+                                configured accordingly. Default value is "jonglisto".
+                                Used mainly for development or could be used if more
+                                than one jonglisto-ng instance is available in the
+                                network.

@@ -40,20 +40,23 @@ cPluginJonglisto::cPluginJonglisto(void) {
 }
 
 cPluginJonglisto::~cPluginJonglisto() {
-    // Clean up after yourself!
+    if (servername != NULL) {
+        delete servername;
+        servername = NULL;
+    }
 }
 
 const char *cPluginJonglisto::CommandLineHelp(void) {
     // Return a string that describes all known command line options.
     return "  -P <port>  --localport=<port>   sets the local SVDRP port\n"
-           "  -D         --developement       starts the plugin in development mode\n";
+           "  -D <name>  --servername=<name>  server name for discovery\n";
 }
 
 bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
     // Implement command line argument processing here if applicable.
     static const struct option long_options[] = {
         { "localport", required_argument, NULL, 'P' },
-        { "development", 0, NULL, 'D' },
+        { "servername", 0, NULL, 'D' },
         {0, 0, 0, 0}
         };
 
@@ -64,11 +67,16 @@ bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
                svdrpPort = atoi(optarg);
                break;
           case 'D':
-               devmode = 1;
+               servername = strdup(optarg);
                break;
           default:
                return false;
         }
+    }
+
+    // set default value if not set
+    if (servername == NULL) {
+        servername = strdup("jonglisto");
     }
 
     return true;
@@ -109,7 +117,7 @@ time_t cPluginJonglisto::WakeupTime(void) {
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
     // Perform the action when selected from the main VDR menu.
-    return new cJonglistoPluginMenu("Jonglisto", svdrpPort, devmode);
+    return new cJonglistoPluginMenu("Jonglisto", svdrpPort, servername);
 }
 
 const char *cPluginJonglisto::MainMenuEntry(void) {

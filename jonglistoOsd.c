@@ -27,14 +27,9 @@ static cStringList jonglistoResponse;
 //***************************************************************************
 // main menu
 //***************************************************************************
-cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, unsigned int sPort, const unsigned int devmode) : cOsdMenu(title) {
+cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, unsigned int sPort, const char* name) : cOsdMenu(title) {
     svdrpPort = sPort;
-
-    if (devmode) {
-        asprintf(&servername, "%s", "jonglisto-dev");
-    } else {
-        asprintf(&servername, "%s", "jonglisto");
-    }
+    servername= strdup(name);
 
     Clear();
 
