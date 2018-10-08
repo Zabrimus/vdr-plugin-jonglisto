@@ -17,8 +17,8 @@
 
 class cJonglistoPluginMenu: public cOsdMenu {
 public:
-    cJonglistoPluginMenu(const char* title, const unsigned int sPort);
-    virtual ~cJonglistoPluginMenu() {};
+    cJonglistoPluginMenu(const char* title, const unsigned int sPort, const unsigned int devmode);
+    virtual ~cJonglistoPluginMenu();
     virtual eOSState ProcessKey(eKeys key);
 
 private:

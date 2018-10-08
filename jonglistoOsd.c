@@ -15,6 +15,7 @@
 
 
 static unsigned int svdrpPort;
+static char* servername = NULL;
 
 static cStringList favourites;
 static cStringList channels;
@@ -26,8 +27,14 @@ static cStringList jonglistoResponse;
 //***************************************************************************
 // main menu
 //***************************************************************************
-cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, unsigned int sPort) : cOsdMenu(title) {
+cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, unsigned int sPort, const unsigned int devmode) : cOsdMenu(title) {
     svdrpPort = sPort;
+
+    if (devmode) {
+        asprintf(&servername, "%s", "jonglisto-dev");
+    } else {
+        asprintf(&servername, "%s", "jonglisto");
+    }
 
     Clear();
 
@@ -37,6 +44,13 @@ cJonglistoPluginMenu::cJonglistoPluginMenu(const char* title, unsigned int sPort
 
     SetHelp(0, 0, 0,0);
     Display();
+}
+
+cJonglistoPluginMenu::~cJonglistoPluginMenu() {
+    if (servername != NULL) {
+        delete servername;
+        servername = NULL;
+    }
 }
 
 eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
@@ -76,7 +90,7 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
 cJonglistoFavouriteMenu::cJonglistoFavouriteMenu(const char* title) : cOsdMenu(title) {
     Clear();
 
-    if (ExecSVDRPCommand("jonglisto", *cString::sprintf("FAVL %d", svdrpPort), &jonglistoResponse)) {
+    if (ExecSVDRPCommand(servername, *cString::sprintf("FAVL %d", svdrpPort), &jonglistoResponse)) {
         if (favourites.Size() > 0) {
             favourites.Clear();
         }
@@ -134,7 +148,7 @@ cJonglistoEpgListMenu::cJonglistoEpgListMenu(const char* title) : cOsdMenu(title
     preselectedTimeValues[0] = strdup(tr("Now"));
     preselectedTimeSize = 1;
 
-    if (ExecSVDRPCommand("jonglisto", "EPGT", &jonglistoResponse)) {
+    if (ExecSVDRPCommand(servername, "EPGT", &jonglistoResponse)) {
         int rsize = std::max(0, std::min(jonglistoResponse.Size(), 10));
         for (int i = 0; i < rsize; ++i) {
             preselectedTimeValues[i+1] = strdup(jonglistoResponse[i] + 4);
@@ -237,7 +251,7 @@ void cJonglistoEpgListMenu::Setup() {
 
     LOCK_CHANNELS_READ;
 
-    if (ExecSVDRPCommand("jonglisto", *cString::sprintf("FAVC %s", Title()), &jonglistoResponse)) {
+    if (ExecSVDRPCommand(servername, *cString::sprintf("FAVC %s", Title()), &jonglistoResponse)) {
         if (channels.Size() > 0) {
             channels.Clear();
         }
@@ -337,7 +351,7 @@ eOSState cJonglistoEpgDetailMenu::ProcessKey(eKeys key) {
         case kGreen: {
             cString command = cString::sprintf("ALRM %u %lu %s %s", svdrpPort, event->StartTime() - 2 * 60, *event->ChannelID().ToString(), event->Title());
 
-            if (ExecSVDRPCommand("jonglisto", *command, &jonglistoResponse)) {
+            if (ExecSVDRPCommand(servername, *command, &jonglistoResponse)) {
                 if (jonglistoResponse.Size() > 0) {
                     if (startswith(jonglistoResponse.At(0), "900")) {
                         Skins.Message(mtInfo, tr("Alarm timer created"));
@@ -427,7 +441,7 @@ eOSState cJonglistoAlarmMenu::ProcessKey(eKeys key) {
             case kRed: {
                 cStringList response;
                 cString cmd = cString::sprintf("ALRC toggle %s", alarmIds.At(Current()));
-                if (ExecSVDRPCommand("jonglisto", *cmd, &jonglistoResponse)) {
+                if (ExecSVDRPCommand(servername, *cmd, &jonglistoResponse)) {
                     if (jonglistoResponse.Size() > 0) {
                         if (startswith(jonglistoResponse.At(0), "900")) {
                             Setup();
@@ -451,7 +465,7 @@ eOSState cJonglistoAlarmMenu::ProcessKey(eKeys key) {
             case kYellow: {
                 cStringList response;
                 cString cmd = cString::sprintf("ALRC delete %s", alarmIds.At(Current()));
-                if (ExecSVDRPCommand("jonglisto", *cmd, &jonglistoResponse)) {
+                if (ExecSVDRPCommand(servername, *cmd, &jonglistoResponse)) {
                     if (jonglistoResponse.Size() > 0) {
                         if (startswith(jonglistoResponse.At(0), "900")) {
                             Setup();
@@ -491,7 +505,7 @@ void cJonglistoAlarmMenu::Setup() {
 
     SetCols(3, 15, 22);
 
-    if (ExecSVDRPCommand("jonglisto", *cString::sprintf("ALRL %u", svdrpPort), &jonglistoResponse)) {
+    if (ExecSVDRPCommand(servername, *cString::sprintf("ALRL %u", svdrpPort), &jonglistoResponse)) {
         if (jonglistoResponse.Size() > 0) {
             LOCK_CHANNELS_READ;
 
@@ -577,7 +591,7 @@ eOSState cJonglistoVdrMenu::ProcessKey(eKeys key) {
                     // check VDR
                     cString req = cString::sprintf("VDRP %s", vdrNames.At(Current()));
 
-                    if (ExecSVDRPCommand("jonglisto", *req, &jonglistoResponse)) {
+                    if (ExecSVDRPCommand(servername, *req, &jonglistoResponse)) {
                         if (jonglistoResponse.Size() >= 1) {
                             if (startswith(jonglistoResponse.At(0), "900")) {
                                 return AddSubMenu(new cJonglistoVdrDetailMenu(vdrNames.At(Current())));
@@ -603,7 +617,7 @@ eOSState cJonglistoVdrMenu::ProcessKey(eKeys key) {
                 if (Current() >= 0) {
                     cString req = cString::sprintf("VDRW %s", vdrNames.At(Current()));
 
-                    if (ExecSVDRPCommand("jonglisto", *req, &jonglistoResponse)) {
+                    if (ExecSVDRPCommand(servername, *req, &jonglistoResponse)) {
                         if (jonglistoResponse.Size() >= 1) {
                             if (startswith(jonglistoResponse.At(0), "900")) {
                                 Skins.Message(mtError, tr("Wake on lan packet sent"));
@@ -647,7 +661,7 @@ void cJonglistoVdrMenu::Setup() {
 
     SetCols(15, 22);
 
-    if (ExecSVDRPCommand("jonglisto", "VDRL", &jonglistoResponse)) {
+    if (ExecSVDRPCommand(servername, "VDRL", &jonglistoResponse)) {
         if (jonglistoResponse.Size() > 0) {
             if (vdrNames.Size() > 0) {
                 vdrNames.Clear();
@@ -747,7 +761,7 @@ void cJonglistoVdrDetailMenu::Setup() {
 
     cString req = cString::sprintf("VDRD %s", Title());
 
-    if (ExecSVDRPCommand("jonglisto", *req, &jonglistoResponse)) {
+    if (ExecSVDRPCommand(servername, *req, &jonglistoResponse)) {
         if (jonglistoResponse.Size() > 0) {
             for (int i = 0; i < jonglistoResponse.Size(); i++) {
                 if (startswith(jonglistoResponse.At(i), "900") && strlen(jonglistoResponse.At(i)) > 5) {

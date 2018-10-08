@@ -45,21 +45,26 @@ cPluginJonglisto::~cPluginJonglisto() {
 
 const char *cPluginJonglisto::CommandLineHelp(void) {
     // Return a string that describes all known command line options.
-    return "  -P <port>  --localport=<port>   sets the local SVDRP port\n";
+    return "  -P <port>  --localport=<port>   sets the local SVDRP port\n"
+           "  -D         --developement       starts the plugin in development mode\n";
 }
 
 bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
     // Implement command line argument processing here if applicable.
     static const struct option long_options[] = {
         { "localport", required_argument, NULL, 'P' },
+        { "development", 0, NULL, 'D' },
         {0, 0, 0, 0}
         };
 
     int c;
-    while ((c = getopt_long(argc, argv, "P:", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "P:D:", long_options, NULL)) != -1) {
         switch (c) {
           case 'P':
                svdrpPort = atoi(optarg);
+               break;
+          case 'D':
+               devmode = 1;
                break;
           default:
                return false;
@@ -104,7 +109,7 @@ time_t cPluginJonglisto::WakeupTime(void) {
 
 cOsdObject *cPluginJonglisto::MainMenuAction(void) {
     // Perform the action when selected from the main VDR menu.
-    return new cJonglistoPluginMenu("Jonglisto", svdrpPort);
+    return new cJonglistoPluginMenu("Jonglisto", svdrpPort, devmode);
 }
 
 const char *cPluginJonglisto::MainMenuEntry(void) {

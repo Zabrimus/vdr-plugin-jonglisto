@@ -16,6 +16,7 @@ static const char *MAINMENUENTRY = "Jonglisto";
 class cPluginJonglisto: public cPlugin {
 private:
     unsigned int svdrpPort = 6419;
+    unsigned int devmode = 0;
 
     std::string printSeries(cSeries series);
     std::string printMovie(cMovie movie);
