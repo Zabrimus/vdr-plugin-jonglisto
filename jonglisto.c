@@ -76,6 +76,7 @@ bool cPluginJonglisto::ProcessArgs(int argc, char *argv[]) {
 
     // set default value if not set
     if (servername == NULL) {
+        esyslog("Setting default servername jonglisto...");
         servername = strdup("jonglisto");
     }
 

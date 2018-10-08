@@ -85,6 +85,8 @@ eOSState cJonglistoPluginMenu::ProcessKey(eKeys key) {
 cJonglistoFavouriteMenu::cJonglistoFavouriteMenu(const char* title) : cOsdMenu(title) {
     Clear();
 
+    isyslog("Servername %s\n", servername);
+
     if (ExecSVDRPCommand(servername, *cString::sprintf("FAVL %d", svdrpPort), &jonglistoResponse)) {
         if (favourites.Size() > 0) {
             favourites.Clear();
