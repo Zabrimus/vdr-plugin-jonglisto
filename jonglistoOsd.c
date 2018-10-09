@@ -279,7 +279,7 @@ void cJonglistoEpgListMenu::Setup() {
             const cEvent *event = GetEvent(ch);
 
             if (event != NULL) {
-                asprintf(&buffer, "%s\t%s\t%s\t%s", ch->Name(), *(event->GetTimeString()), *(event->GetEndTimeString()), event->Title());
+                asprintf(&buffer, "%s\t%s\t%s\t%s - %s", ch->Name(), *(event->GetTimeString()), *(event->GetEndTimeString()), event->Title(), event->ShortText());
                 cOsdMenu::Add(new cOsdItem(buffer));
                 free(buffer);
                 buffer = NULL;
